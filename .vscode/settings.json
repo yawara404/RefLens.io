@@ -1,0 +1,47 @@
+{
+  // ------------------------------------------------------------------
+  // Nuxtr (Nuxt VS Code 拡張) 設定
+  // Nuxtr は「ワークスペースフォルダのルート」に nuxt.config.ts を探しに行く。
+  // このリポジトリは frontend/ が Nuxt プロジェクトなので monorepoMode で指す。
+  //   → プロジェクトルート = <workspace>/frontend
+  //   → ファイル生成・依存管理・Nuxi 実行・IntelliSense が frontend/ に対して動く
+  // ------------------------------------------------------------------
+  "nuxtr.monorepoMode.DirectoryName": "frontend",
+
+  // package-lock.json があるため NPM 固定（自動検出の明示指定）
+  "nuxtr.defaultPackageManager": "NPM",
+
+  // 生成したファイルは自動で開く
+  "nuxtr.openItemsAfterCreation": true,
+
+  // ファイル生成テンプレートの書式（このプロジェクトの規約に合わせる）
+  "nuxtr.vueFiles.template.defaultLanguage": "html",
+  "nuxtr.vueFiles.firstTag": "template",
+  "nuxtr.vueFiles.script.type": "setup",
+  "nuxtr.vueFiles.script.defaultLanguage": "ts",
+  // Tailwind / utilities 中心のコンポーネントなので <style> は付けない
+  "nuxtr.vueFiles.style.addStyleTag": false,
+  "nuxtr.vueFiles.style.alwaysScoped": false,
+  "nuxtr.vueFiles.style.defaultLanguage": "css",
+
+  // Pinia は Options Store を使っている（stores/boardStore.ts）ので options に揃える
+  "nuxtr.piniaFiles.defaultTemplate": "options",
+
+  // IntelliSense（pages/ のルートパス補完・public/ のアセット補完など）
+  "nuxtr.intellisense.vueFiles": true,
+  "nuxtr.intellisense.nuxtignore": true,
+  "nuxtr.intellisense.nuxtrc": true,
+
+  // Nuxt / Nitro スニペット
+  "nuxtr.snippets.nuxt": true,
+  "nuxtr.snippets.nitro": true,
+
+  // 生成されるコードの改行コードを LF に揃える
+  "files.eol": "\n",
+
+  // ---- エディタ側の基本設定 ----
+  "[vue]": {
+    "editor.defaultFormatter": "Vue.volar"
+  },
+  "vue.previewMode.decoratorStyle": "expression"
+}

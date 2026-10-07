@@ -1,0 +1,250 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================
+   配色トークン
+   ライト / ダークの 2 セットだけを持ち、Tailwind の
+   bg-canvas-panel や text-ink-muted などのクラスが
+   そのまま切り替わる。グラデーションは一切使わない。
+   ========================================================= */
+@layer base {
+  :root {
+    color-scheme: light;
+
+    --surface-base: #f4f5f7;
+    --surface-panel: #ffffff;
+    --surface-card: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-sunken: #e7e9ee;
+    --surface-hover: #eef0f4;
+
+    --border-subtle: #dfe2e8;
+    --border-strong: #c4c9d3;
+
+    --text-primary: #171a1f;
+    --text-muted: #5b6270;
+    --text-subtle: #6b7280;
+    --text-inverted: #ffffff;
+
+    /* アクセント: フラットなインディゴ1色 */
+    --accent-default: #4338ca;
+    --accent-hover: #3730a3;
+    --accent-active: #2e2682;
+    --accent-soft: #eef2ff;
+    --accent-fg: #ffffff;
+
+    --pixiv-soft: #e5f4fe;
+    --instagram-soft: #fce7f0;
+
+    --success: #0a7049;
+    --success-soft: #e3f6ee;
+    --warning: #8a4308;
+    --warning-soft: #fdf3e3;
+    --danger: #c22f2f;
+    --danger-soft: #fceaea;
+
+    --shadow-panel: 0 1px 2px rgba(16, 20, 28, 0.06);
+    --shadow-pop: 0 8px 24px -6px rgba(16, 20, 28, 0.18);
+    --shadow-canvas-item: 0 1px 3px rgba(16, 20, 28, 0.22);
+
+    --overlay-scrim: rgba(20, 24, 32, 0.45);
+
+    /* キャンバス地のドット/グリッド */
+    --canvas-dot: rgba(23, 26, 31, 0.13);
+    --canvas-line: rgba(23, 26, 31, 0.07);
+    --canvas-surface: #edeef1;
+  }
+
+  .dark {
+    color-scheme: dark;
+
+    --surface-base: #0f1116;
+    --surface-panel: #171a21;
+    --surface-card: #1c2029;
+    --surface-raised: #232833;
+    --surface-sunken: #0a0c10;
+    --surface-hover: #252a35;
+
+    --border-subtle: #2a2f3a;
+    --border-strong: #3d4452;
+
+    --text-primary: #e8eaed;
+    --text-muted: #a8aebe;
+    --text-subtle: #8b93a2;
+    --text-inverted: #0f1116;
+
+    /* ダークでは明るいインディゴにして面とのコントラストを確保する */
+    --accent-default: #818cf8;
+    --accent-hover: #a5b4fc;
+    --accent-active: #6366f1;
+    --accent-soft: #232545;
+    --accent-fg: #10121a;
+
+    --pixiv-soft: #0d2a3d;
+    --instagram-soft: #33101f;
+
+    --success: #4ade9c;
+    --success-soft: #12301f;
+    --warning: #f0b45f;
+    --warning-soft: #33260f;
+    --danger: #f87a7a;
+    --danger-soft: #3a1a1a;
+
+    --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-pop: 0 10px 30px -8px rgba(0, 0, 0, 0.7);
+    --shadow-canvas-item: 0 2px 6px rgba(0, 0, 0, 0.6);
+
+    --overlay-scrim: rgba(6, 8, 12, 0.68);
+
+    --canvas-dot: rgba(232, 234, 237, 0.12);
+    --canvas-line: rgba(232, 234, 237, 0.05);
+    --canvas-surface: #0b0d12;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply font-sans antialiased;
+    background-color: var(--surface-base);
+    color: var(--text-primary);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* 入力要素・ボタン・textarea 等は inherit して常にテーマ色に乗る */
+  input,
+  textarea,
+  select,
+  button {
+    @apply font-sans;
+    color: inherit;
+  }
+
+  /* フォーカスリングはブラウザ既定ではなくテーマ色へ統一 */
+  :focus-visible {
+    outline: 2px solid var(--accent-default);
+    outline-offset: 1px;
+  }
+}
+
+/* =========================================================
+   キャンバス背景パターン
+   ========================================================= */
+.bg-canvas-dots {
+  background-color: var(--canvas-surface);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.bg-canvas-grid {
+  background-color: var(--canvas-surface);
+  background-image:
+    linear-gradient(to right, var(--canvas-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--canvas-line) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.bg-canvas-plain {
+  background-color: var(--canvas-surface);
+}
+
+/* =========================================================
+   パネル類
+   ========================================================= */
+.panel-solid {
+  background-color: var(--surface-panel);
+  border-color: var(--border-subtle);
+}
+
+.panel-raised {
+  background-color: var(--surface-raised);
+  border-color: var(--border-subtle);
+}
+
+/* キャンバス上に浮くツールバー/ピル */
+.floating-bar {
+  background-color: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-pop);
+}
+
+/* モーダルの背面 */
+.scrim {
+  background-color: var(--overlay-scrim);
+}
+
+/* =========================================================
+   スクロールバー
+   ========================================================= */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-subtle);
+  background-clip: content-box;
+}
+
+/* 横スクロールバーを非表示（カテゴリピル等） */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* =========================================================
+   ユーティリティ
+   ========================================================= */
+.no-drag-select {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* タッチ操作: ダブルタップ拡大とGESTURE抑止 */
+.no-touch-zoom {
+  touch-action: manipulation;
+}
+
+/* キャンバス: ピンチズームと2本指パンを受け持つ */
+.touch-canvas {
+  touch-action: none;
+}
+
+/* 画像やボタン内の長押しメニュー抑止 */
+.no-context-menu {
+  -webkit-touch-callout: none;
+}
+
+/* キーボード操作時にだけフォーカスリングを出す */
+.focus-ring-only:focus-visible {
+  outline: 2px solid var(--accent-default);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

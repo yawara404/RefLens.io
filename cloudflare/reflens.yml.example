@@ -1,0 +1,34 @@
+# RefLens.io public preview。ローカルの Pixiv 環境 (8080/3000) や
+# 他サイト (3120) とは別のポートを使う。
+#
+# 使い方:
+#   cp cloudflare/reflens.yml.example cloudflare/reflens.yml
+#   cloudflare/reflens.yml はローカル専用（.gitignore 済み）なので、
+#   下の credentials-file を自分の環境の値に書き換えてから使う。
+#
+# credentials-file は `cloudflared tunnel create reflens` のときに生成される
+# 認証ファイル（既定 ~/.cloudflared/<TUNNEL_ID>.json）の絶対パス。
+# 秘密情報をリポジトリに置かないため、ここは置き換える前提の雛形にしてある。
+tunnel: reflens
+credentials-file: /PATH/TO/.cloudflared/TUNNEL_ID.json
+
+ingress:
+  - hostname: art.wawa-app.me
+    path: ^/RefLens\.io/api/.*$
+    service: http://127.0.0.1:8082
+    originRequest:
+      http2Origin: false
+
+  - hostname: art.wawa-app.me
+    path: ^/RefLens\.io/uploads/.*$
+    service: http://127.0.0.1:8082
+    originRequest:
+      http2Origin: false
+
+  - hostname: art.wawa-app.me
+    service: http://127.0.0.1:3121
+    originRequest:
+      http2Origin: false
+      httpHostHeader: art.wawa-app.me
+
+  - service: http_status:404

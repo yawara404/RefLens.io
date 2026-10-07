@@ -1,0 +1,33 @@
+{
+  // ------------------------------------------------------------------
+  // frontend/ を直接 VS Code のフォルダとして開いた場合の Nuxtr 設定
+  // （リポジトリルートを開いた場合は ../../.vscode/settings.json の
+  //   nuxtr.monorepoMode.DirectoryName が使われるため、ここには書かない）
+  // ------------------------------------------------------------------
+  "nuxtr.defaultPackageManager": "NPM",
+  "nuxtr.openItemsAfterCreation": true,
+
+  "nuxtr.vueFiles.template.defaultLanguage": "html",
+  "nuxtr.vueFiles.firstTag": "template",
+  "nuxtr.vueFiles.script.type": "setup",
+  "nuxtr.vueFiles.script.defaultLanguage": "ts",
+  "nuxtr.vueFiles.style.addStyleTag": false,
+  "nuxtr.vueFiles.style.alwaysScoped": false,
+  "nuxtr.vueFiles.style.defaultLanguage": "css",
+
+  "nuxtr.piniaFiles.defaultTemplate": "options",
+
+  "nuxtr.intellisense.vueFiles": true,
+  "nuxtr.intellisense.nuxtignore": true,
+  "nuxtr.intellisense.nuxtrc": true,
+
+  "nuxtr.snippets.nuxt": true,
+  "nuxtr.snippets.nitro": true,
+
+  "files.eol": "\n",
+
+  "[vue]": {
+    "editor.defaultFormatter": "Vue.volar"
+  },
+  "vue.previewMode.decoratorStyle": "expression"
+}
