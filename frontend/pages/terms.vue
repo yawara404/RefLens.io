@@ -17,7 +17,7 @@ useHead({ title: '利用上の注意 | RefLens.io' })
     </section>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">ゲスト・公開環境</h2>
-      <p>未ログイン時は共通のゲスト領域を使用します。公開プレビューではPixivアカウント接続とPixiv APIからの実データ表示を無効にしています。公開サーバーを運用する場合は、個別のアクセス制御と保存先の分離を確認してください。</p>
+      <p>未ログイン時は共通のゲスト領域を使用します。共通ゲストにPixivのセッションは渡しません。公開プレビューではRefresh Tokenの手入力接続を無効にしており、接続は「Pixivでログイン」から行います。名指しされた管理者アカウントは公開URLでも既存の連携を引き継いで実データを表示します。公開サーバーを運用する場合は、個別のアクセス制御と保存先の分離を確認してください。</p>
     </section>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">動作について</h2>

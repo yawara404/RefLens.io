@@ -80,12 +80,14 @@
 - **公開バックエンドも同じ `backend/.env` を読みます**（`start.sh` が `backend/` で uvicorn を起動）。つまり `PIXIV_CLIENT_ID` / `PIXIV_CLIENT_SECRET` / `PIXIV_TOKEN_ENCRYPTION_KEY` が設定済みなら公開側でも `is_configured()` は `true`（`pixiv_client.py:38`）。**足りないのは設定値ではなくポリシー（2.1〜2.2）です。**
 - `backend/app/core/config.py` の `SECRET_KEY` に固定の既定値は置いていません（未設定時はプロセスごとのランダム鍵）。**公開前に `backend/.env` の `SECRET_KEY` を必ず固有の長い値へ変更**してください（この値でJWTを発行しているため、公開中の変更は全ユーザーのトークンを失効させます。変わる前にログインし直せる状態にしておく）。
 - `PIXIV_TOKEN_ENCRYPTION_KEY` は生成後に変更しないこと。失うと保存済みトークンが復号不能（再接続が必要）。`.env` とDBバックアップをリポジトリ外で管理する。
-- `backend/scripts/sync_public_accounts.py` は **`pixiv_accounts` / `instagram_accounts` を同期しません**（トークンを持ち出さない）。この制約は維持する。公開側DBにトークンを移す運用にするなら、**暗号化キーの共有と、トークン平文がDBに残っていないことの確認**が必須。
+- `backend/scripts/sync_public_accounts.py` は **`instagram_accounts` を同期しません**。`pixiv_accounts` も**既定は同期しない**が、`PIXIV_SYNC_USERS`（`backend/.env`、カンマ区切りの username / email）で名指ししたユーザーだけ例外的に移す（段階公開 ①「管理者のみ」。共通ゲストは常に除外）。移す運用に踏み込んだ以上、**暗号化キーの共有と、トークン平文がDBに残っていないことの確認**は必須。
+  - トークンはリフレッシュのたびに入れ替わるため、スクリプトは `expires_at` が**公開側の方が新しい行を上書きしない**（公開側で更新したトークンを古い側で潰さないため）。
+  - 指定が空なら従来どおり 1 本も移さない。
 - 平文トークンの残存確認:
 
   ```bash
   sqlite3 backend/reflens-public.db "select id, user_id, access_token, refresh_token from pixiv_accounts;" | head
-  # 開頭が gAAAAA （Fernet）以外なら平文。その行は再接続させて暗号化し直す。
+  # 開頭が fernet:gAAAAA（Fernet 暗号文）でなければ平文。その行は再接続させて暗号化し直す。
   ```
 
 - ログ（`logs/*.log`）、`.env`、DB、トンネル認証情報を第三者に渡さない。Pixiv側のトークン失効は画面上の「接続解除」では行わないため、漏えい時はPixivの設定から直接無効化する。
@@ -132,7 +134,7 @@
 | 3 | ~~`PIXIV_PUBLIC_ENABLED` フラグ導入と `ROOT_PATH` 判定の置き換え~~ **pixiv可否の `ROOT_PATH` 判定は撤廃済み**。残るは `token_connect_available`（公開で Refresh Token 接続を切る専用フラグ）と `main.py:16` のルーティング用途 | `config.py`、`pixiv.py` |
 | 4 | フロント導線: 未ログイン時のログイン促進、接続ボタン表示条件 | `usePixiv.ts`、`view.vue`、`PixivConnectDialog.vue` |
 | 5 | デプロイ: `./start.sh deploy` → 実ブラウザでE2E確認（→ 4） | — |
-| 6 | 段階公開: ①管理者のみ → ②招待制 → ③全ユーザー（`pixiv_accounts` を同期しない制約は維持） | 運用 |
+| 6 | 段階公開: ①**管理者のみ（実装済み）** `PIXIV_SYNC_USERS` に名指ししたユーザーだけ `pixiv_accounts` を公開側へ同期 → ②招待制 → ③全ユーザー | 運用 |
 
 各フェーズの後にバックアップ（`sqlite3 backend/reflens-public.db ".backup backup.db"`）を取ってから次へ進むと安全です。
 
@@ -180,4 +182,4 @@
 | `frontend/composables/usePixiv.ts` | 接続可否（`connect_available` / `token_connect_available`）とフィード取得 |
 | `start.sh` | `public` / `deploy` / `pixiv-local` の起動条件 |
 | `cloudflare/reflens.yml` | Tunnel の ingress（api / uploads / 本体の振り分け） |
-| `backend/scripts/sync_public_accounts.py` | 公開側DBへの同期（pixivトークンは移さない） |
+| `backend/scripts/sync_public_accounts.py` | 公開側DBへの同期（pixivトークンは `PIXIV_SYNC_USERS` の分だけ / 既定は移さない） |

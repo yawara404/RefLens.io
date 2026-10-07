@@ -114,7 +114,7 @@ Pixivの「AI生成作品」設定は、AI学習の許諾を示すものでは�
 
 公開サイトでpixiv連携を実際に有効化するための要件（アクセス制御・未ログイン遮断・秘密情報の管理・検証手順）は [PIXIV_PUBLIC.md](PIXIV_PUBLIC.md) にまとめています。
 
-メール / パスワード認証だけは公開サイトでも使えるよう、`./start.sh public` / `deploy` の起動時に `backend/scripts/sync_public_accounts.py` がローカルDBのアカウント（とボード・画像）を公開側の `reflens-public.db` へ同期します。`pixiv_accounts` / `instagram_accounts` は同期対象外で、トークンは公開側DBにコピーされません。
+メール / パスワード認証だけは公開サイトでも使えるよう、`./start.sh public` / `deploy` の起動時に `backend/scripts/sync_public_accounts.py` がローカルDBのアカウント（とボード・画像）を公開側の `reflens-public.db` へ同期します。`instagram_accounts` は同期対象外です。`pixiv_accounts` も既定は同期しませんが、`backend/.env` の `PIXIV_SYNC_USERS`（カンマ区切りの username / email）に名指しした**管理者アカウントだけは例外**で、公開URLでもそのまま pixiv の実データが見られます（共通ゲストは常に除外）。
 
 サーバーの`.env`、DB、ログを第三者に公開しないでください。既存の古い平文トークンは、次回の有効期限更新時に暗号化して保存されます。既存DBを外部へ出す前には平文行が残っていないか確認してください。
 

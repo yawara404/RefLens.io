@@ -14,11 +14,26 @@
     ログイン直後から同じボードが開ける。
 
 同期しないもの:
-    - `pixiv_accounts` / `instagram_accounts` … アクセストークンを含み、
-      公開プレビューでは ROOT_PATH 設定によりこれらの連携自体が無効化されている
-      (PIXIV_SETUP.md「公開プレビューと安全性」)。
+    - `instagram_accounts` … アクセストークンを含み、Instagram連携は公開側で
+      そもそも機能させない。
+    - `pixiv_accounts` … 既定は同期しない。ただし `PIXIV_SYNC_USERS` で指定した
+      管理者アカウントだけは例外的に移す（下記「pixiv トークンの管理者同期」）。
     - 共通ゲスト `creator@reflens.io` … 各DBが自分の初期データを持つ。
       ここで触ると公開側のデモデータが壊れる。
+
+pixiv トークンの管理者同期:
+    `PIXIV_SYNC_USERS`（カンマ区切りの username または email）に挙げたユーザーの
+    `pixiv_accounts` 行だけ、公開側DBへも移す。公開URLでもそのアカウントでログイン
+    すれば、そのまま pixiv の実データが見られる。
+
+    - 値は `backend/.env` に書く。このリポジトリは公開するので、実アカウントを
+      コードやコミットに書かない。
+    - 空（既定）なら従来どおりトークンは 1 本も移さない。
+    - 共通ゲストは選抜対象にかかわらず常に除外。
+    - リフレッシュはアクセストークンと入れ替わるため、**公開側の方が新しい
+      `expires_at` のときは公開側を優先**して上書きしない（古いトークンで
+      育て直して失効させるのを防ぐ）。
+    - 暗号化キーは両 DB が同じ `backend/.env` を読むので共有可能。
 
 使い方:
     backend/venv/bin/python backend/scripts/sync_public_accounts.py
@@ -44,6 +59,9 @@ DEFAULT_TARGET_DB = BACKEND_DIR / "reflens-public.db"
 
 GUEST_EMAIL = "creator@reflens.io"
 
+# pixiv トークンを公開側へ移す対象を決める変数名（値は backend/.env に置く）
+PIXIV_SYNC_ENV = "PIXIV_SYNC_USERS"
+
 # PK の重複チェックだけで追記するテーブル（作業データ）
 SYNCED_TABLES = (
     "boards",
@@ -51,6 +69,20 @@ SYNCED_TABLES = (
     "media_items",
     "canvas_items",
     "ai_analyses",
+)
+
+# pixiv_accounts はトークンを含むため、user_id を鍵に必ず最新化する列
+PIXIV_TOKEN_COLUMNS = (
+    "id",
+    "user_id",
+    "pixiv_user_id",
+    "pixiv_username",
+    "pixiv_account",
+    "access_token",
+    "refresh_token",
+    "expires_at",
+    "created_at",
+    "updated_at",
 )
 
 # ユーザーが公開側で作業できる最低条件。無ければ空のボードを1つ作る。
@@ -210,6 +242,90 @@ def sync_table(
     return added
 
 
+def pixiv_sync_selectors() -> list[str]:
+    """pixiv トークンを公開側へ移す対象ユーザー（username または email）を返す。
+
+    `backend/.env` の `PIXIV_SYNC_USERS`（カンマ区切り）を読む。このリポジトリは
+    公開するので、実アカウントはコードに書かず .env 側に置く。空なら対象なし。
+    """
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(BACKEND_DIR / ".env")
+    except Exception:  # dotenv が無い環境でも env 変数だけで動かす
+        pass
+    raw = os.environ.get(PIXIV_SYNC_ENV) or ""
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _expiry_key(value: object) -> str:
+    """expires_at を文字列比較できる形に揃える（NULL は最小として扱う）。"""
+    if value in (None, ""):
+        return ""
+    return str(value).replace("T", " ").strip()
+
+
+def sync_pixiv_tokens(
+    source: sqlite3.Connection, target: sqlite3.Connection, selectors: list[str]
+) -> tuple[int, int, list[str]]:
+    """選抜ユーザーの pixiv_accounts を公開側へ移す。返り値は (追加, 更新, 対象ユーザー)。
+
+    リフレッシュトークンはリフレッシュのたびに入れ替わるので、公開側の方が
+    `expires_at` が新しい場合は公開側の行を温存する。上書きすると、公開側で
+    一度更新されたトークンを古い側で潰して接続を壊すため。
+    """
+    if not selectors:
+        return 0, 0, []
+    if not table_exists(source, "pixiv_accounts") or not table_exists(target, "pixiv_accounts"):
+        return 0, 0, []
+
+    columns = ", ".join(f"p.{c}" for c in PIXIV_TOKEN_COLUMNS)
+    # IN 句はプレースホルダで組み立てる（env の文字列をそのまま埋め込まない）
+    clauses: list[str] = []
+    params: list[str] = [GUEST_EMAIL]
+    for sel in selectors:
+        clauses.append("(u.username = ? OR u.email = ?)")
+        params.extend([sel, sel])
+
+    rows = source.execute(
+        f"SELECT {columns} FROM pixiv_accounts p"
+        " JOIN users u ON u.id = p.user_id"
+        f" WHERE u.email != ? AND ({' OR '.join(clauses)})",
+        tuple(params),
+    ).fetchall()
+
+    matched_users: list[str] = []
+    added = updated = 0
+    for row in rows:
+        source_row = dict(zip(PIXIV_TOKEN_COLUMNS, row))
+        matched_users.append(source_row["pixiv_username"] or source_row["user_id"])
+        existing = target.execute(
+            "SELECT expires_at FROM pixiv_accounts WHERE user_id = ?",
+            (source_row["user_id"],),
+        ).fetchone()
+        if existing:
+            # 公開側が新しい（一度でもリフレッシュされた）なら触らない
+            if _expiry_key(existing[0]) >= _expiry_key(source_row["expires_at"]):
+                continue
+            sets = ", ".join(f"{c} = ?" for c in PIXIV_TOKEN_COLUMNS if c != "id")
+            target.execute(
+                f"UPDATE pixiv_accounts SET {sets} WHERE user_id = ?",
+                tuple(source_row[c] for c in PIXIV_TOKEN_COLUMNS if c != "id")
+                + (source_row["user_id"],),
+            )
+            updated += 1
+        else:
+            target.execute(
+                f"INSERT INTO pixiv_accounts ({', '.join(PIXIV_TOKEN_COLUMNS)}) VALUES"
+                f" ({', '.join('?' * len(PIXIV_TOKEN_COLUMNS))})",
+                tuple(source_row[c] for c in PIXIV_TOKEN_COLUMNS),
+            )
+            added += 1
+
+    target.commit()
+    return added, updated, matched_users
+
+
 def seed_starter_board_if_empty(
     source: sqlite3.Connection, target: sqlite3.Connection, user_ids: list[str]
 ) -> int:
@@ -317,8 +433,11 @@ def main() -> int:
             }
             boards = seed_starter_board_if_empty(source, target, user_ids)
             files = sync_upload_files(source, target, user_ids)
+            pixiv_added, pixiv_updated, pixiv_users = sync_pixiv_tokens(
+                source, target, pixiv_sync_selectors()
+            )
 
-    total = sum(counts.values()) + boards + files
+    total = sum(counts.values()) + boards + files + pixiv_added + pixiv_updated
     if args.quiet and total == 0:
         return 0
     print(f"公開DB同期: {target_path}")
@@ -330,6 +449,13 @@ def main() -> int:
         print(f"  初期ボード: +{boards}")
     if files:
         print(f"  画像ファイル: +{files}")
+    if pixiv_users:
+        print(
+            f"  pixivトークン: 追加 {pixiv_added} / 更新 {pixiv_updated}"
+            f"（{', '.join(sorted(set(pixiv_users)))}）"
+        )
+    elif not pixiv_sync_selectors():
+        print("  pixivトークン: 同期なし（PIXIV_SYNC_USERS 未設定）")
     if total == 0:
         print("  変更なし（同期済み）")
     return 0
