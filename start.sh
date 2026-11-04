@@ -92,6 +92,14 @@ pid_of() {
   return 1
 }
 
+tunnel_pid_of() {
+  local pid command
+  pid="$(pid_of "$TUNNEL_PID")" || return 1
+  command="$(ps -p "$pid" -o command= 2>/dev/null)"
+  [[ "$command" == *cloudflared* && "$command" == *reflens* ]] || return 1
+  echo "$pid"
+}
+
 port_up() {
   # $1 = ポート番号
   curl -s -m 2 -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null
@@ -280,7 +288,13 @@ sync_public_accounts() {
 
 # ---------------------------------------------------------- tunnel 起動 --
 start_tunnel() {
-  if pid_of "$TUNNEL_PID" >/dev/null; then
+  # launchd 管理時はそちらを正とする（二重起動を避ける）。
+  if command -v launchctl >/dev/null 2>&1 && \
+     launchctl print "gui/$(id -u)/io.reflens.tunnel" >/dev/null 2>&1; then
+    echo "トンネルは launchd 管理中 → $PUBLIC_URL"
+    return 0
+  fi
+  if tunnel_pid_of >/dev/null; then
     echo "トンネルは起動済み (PID $(cat "$TUNNEL_PID")) → $PUBLIC_URL"
     return 0
   fi
@@ -297,10 +311,12 @@ start_tunnel() {
     return 1
   fi
 
-  nohup cloudflared tunnel --config "$TUNNEL_CONFIG" run "$TUNNEL_NAME" >> "$TUNNEL_LOG" 2>&1 &
+  # このホストでは QUIC (UDP/7844) が断続的に切れ、プロセスだけ生きたまま
+  # 公開 URL が 530 になる。TCP の HTTP/2 に固定する。
+  nohup cloudflared tunnel --protocol http2 --config "$TUNNEL_CONFIG" run "$TUNNEL_NAME" >> "$TUNNEL_LOG" 2>&1 &
   echo $! > "$TUNNEL_PID"
   sleep 4
-  if pid_of "$TUNNEL_PID" >/dev/null; then
+  if tunnel_pid_of >/dev/null; then
     echo "トンネル起動しました → $PUBLIC_URL"
   else
     echo "トンネルの起動に失敗しました。logs/tunnel.log を確認してください" >&2
@@ -310,7 +326,7 @@ start_tunnel() {
 
 # ------------------------------------------------------------------ stop --
 stop_one() {
-  local label="$1" pidfile="$2"
+  local label="$1" pidfile="$2" port="${3:-}"
   if pid="$(pid_of "$pidfile")"; then
     # 子プロセス（npm→node など）もまとめて止める
     pkill -P "$pid" 2>/dev/null
@@ -318,8 +334,29 @@ stop_one() {
     sleep 1
     kill -9 "$pid" 2>/dev/null
     echo "  $label を停止しました (PID $pid)"
+  elif [ -n "$port" ] && command -v lsof >/dev/null 2>&1; then
+    local listen_pids
+    listen_pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+    if [ -n "$listen_pids" ]; then
+      kill $listen_pids 2>/dev/null || true
+      sleep 1
+      kill -9 $listen_pids 2>/dev/null || true
+      echo "  $label を停止しました (port $port)"
+    fi
   fi
   rm -f "$pidfile"
+}
+
+stop_tunnel() {
+  if command -v launchctl >/dev/null 2>&1; then
+    launchctl bootout "gui/$(id -u)/io.reflens.public-watchdog" 2>/dev/null || true
+    launchctl bootout "gui/$(id -u)/io.reflens.tunnel" 2>/dev/null || true
+  fi
+  if tunnel_pid_of >/dev/null; then
+    stop_one "tunnel" "$TUNNEL_PID"
+  else
+    rm -f "$TUNNEL_PID"
+  fi
 }
 
 # ---------------------------------------------------------------- status --
@@ -341,7 +378,10 @@ show_status() {
   else
     echo "  frontend   : 停止中"
   fi
-  if pid="$(pid_of "$TUNNEL_PID")"; then
+  if command -v launchctl >/dev/null 2>&1 && \
+     launchctl print "gui/$(id -u)/io.reflens.tunnel" >/dev/null 2>&1; then
+    echo "  tunnel     : launchd 管理中 → $PUBLIC_URL"
+  elif pid="$(tunnel_pid_of)"; then
     echo "  tunnel     : 稼働中 (PID $pid) → $PUBLIC_URL"
   elif curl -fsS -m 5 -o /dev/null "$PUBLIC_URL" 2>/dev/null; then
     echo "  tunnel     : 稼働中 (公開URL応答) → $PUBLIC_URL"
@@ -369,13 +409,13 @@ case "${1:-start}" in
     show_status
     ;;
   public-stop)
-    stop_one "public backend" "$BACKEND_PID"
-    stop_one "public frontend" "$FRONTEND_PID"
-    stop_one "tunnel" "$TUNNEL_PID"
+    stop_one "public backend" "$BACKEND_PID" "$BACKEND_PORT"
+    stop_one "public frontend" "$FRONTEND_PID" "$PUBLIC_FRONTEND_PORT"
+    stop_tunnel
     ;;
   pixiv-local-stop)
-    stop_one "pixiv-local backend" "$BACKEND_PID"
-    stop_one "pixiv-local frontend" "$FRONTEND_PID"
+    stop_one "pixiv-local backend" "$BACKEND_PID" "$BACKEND_PORT"
+    stop_one "pixiv-local frontend" "$FRONTEND_PID" "$FRONTEND_PORT"
     ;;
   public)
     # backend は /RefLens.io 接頭辞付きで受け、frontend は同じベースパスで配信する
@@ -385,7 +425,9 @@ case "${1:-start}" in
     echo "公開URL : $PUBLIC_URL"
     ;;
   deploy)
-    # Cloudflare Tunnel 経由の公開は本番ビルドを配信する（Vite dev server は使わない）
+    # Cloudflare Tunnel 経由の公開は最新コードの本番ビルドへ更新して配信する
+    stop_one "public backend" "$BACKEND_PID" "$BACKEND_PORT"
+    stop_one "public frontend" "$FRONTEND_PID" "$PUBLIC_FRONTEND_PORT"
     start_backend "$PUBLIC_BASE_PATH" && sync_public_accounts && start_frontend deploy && start_tunnel
     echo
     echo "ローカル: http://127.0.0.1:${PUBLIC_FRONTEND_PORT}${PUBLIC_BASE_PATH}/"
@@ -407,7 +449,7 @@ case "${1:-start}" in
     echo "停止しています..."
     stop_one "backend" "$BACKEND_PID"
     stop_one "frontend" "$FRONTEND_PID"
-    stop_one "tunnel" "$TUNNEL_PID"
+    stop_tunnel
     echo "完了しました。"
     ;;
   *)

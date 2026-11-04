@@ -33,15 +33,15 @@ function toggleTag(tag: string) {
     これがないとヘッダーの左右（ナビゲーション / アクション）が
     狭い画面で重なってしまう。
   -->
-  <div class="flex items-center gap-2 min-w-0">
+  <div class="flex flex-col xl:flex-row xl:items-center gap-2 min-w-0 w-full">
     <!-- 検索入力 -->
-    <div class="relative flex items-center shrink-0">
+    <div class="relative flex items-center w-full xl:w-64 shrink-0">
       <Search class="absolute left-3 w-3.5 h-3.5 text-ink-subtle pointer-events-none" />
       <input
         v-model="boardStore.searchQuery"
         type="search"
         placeholder="構図・ライティング・タグで検索"
-        class="w-44 sm:w-64 bg-canvas-card border border-canvas-border rounded-full pl-8 pr-8 py-1.5 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition-colors"
+        class="w-full bg-canvas-bg xl:bg-canvas-card border border-canvas-border-strong xl:border-canvas-border rounded-xl xl:rounded-full pl-8 pr-8 py-2 xl:py-1.5 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition-colors"
         aria-label="キャンバス上の資料を検索"
       />
       <button
@@ -58,7 +58,7 @@ function toggleTag(tag: string) {
     <!-- タグクイックフィルター -->
     <div
       v-if="availableTags.length"
-      class="hidden lg:flex items-center gap-1.5 overflow-x-auto min-w-0 max-w-sm no-scrollbar"
+      class="flex flex-wrap xl:flex-nowrap items-center gap-1.5 xl:overflow-x-auto min-w-0 max-w-full xl:max-w-sm no-scrollbar"
     >
       <button
         v-for="tag in availableTags"

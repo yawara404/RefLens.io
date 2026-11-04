@@ -1,8 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 
 // 配色は CSS 変数（assets/css/main.css の :root / .dark）で一元管理する。
-// Tailwind のクラス名を変えずにライト/ダークを切り替えられるようにするのが目的。
-const token = (name) => `var(--${name})`
+// Tailwind のクラス名を変えずにライト/ダークを切り替えられるようにし、
+// /90 などの透過修飾子（<alpha-value>）も正しく効くように color-mix でラップする。
+const token = (name) => `color-mix(in srgb, var(--${name}) calc(<alpha-value> * 100%), transparent)`
 
 export default {
   darkMode: 'class',

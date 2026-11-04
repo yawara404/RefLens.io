@@ -308,6 +308,11 @@ async def pixiv_image(
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.hostname != "i.pximg.net" or parsed.port or parsed.username or parsed.password:
         raise HTTPException(status_code=400, detail="Pixiv画像URLのみ指定できます。")
+    # ここからのダウンロードは最大30秒かかるうえ、一覧表示では約30枚が同時に
+    # 呼ばれる。DB 接続（QueuePool は5+10=15）を握ったまま待つとプールが枯渇し、
+    # 認証を含む全 API がタイムアウトして「サーバーが落ちた」状態になるため、
+    # 検証が済んだ時点で接続を返しておく。
+    db.close()
     image, error = await PixivClient().download_image(url, settings.PIXIV_CACHE_DIR)
     if not image:
         raise HTTPException(status_code=502, detail=error or "画像の取得に失敗しました。")

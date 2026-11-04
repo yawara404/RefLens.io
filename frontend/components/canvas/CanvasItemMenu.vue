@@ -13,6 +13,8 @@ import {
   Sparkles,
   ExternalLink,
   Copy,
+  Maximize2,
+  Pencil,
 } from 'lucide-vue-next'
 import type { CanvasItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
@@ -28,6 +30,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'open-insight'): void
+  (e: 'focus-item', item: CanvasItem): void
+  (e: 'changed'): void
 }>()
 
 const boardStore = useBoardStore()
@@ -35,8 +39,29 @@ const toast = useToast()
 
 const menuRef = ref<HTMLElement | null>(null)
 const position = ref({ left: 0, top: 0 })
+const draftCaption = ref('')
+const isEditingCaption = ref(false)
+
+const OPACITY_PRESETS = [0.25, 0.5, 0.75, 1] as const
 
 const item = computed(() => props.item)
+
+function saveCaption() {
+  if (!item.value) return
+  const next = draftCaption.value.trim()
+  if (next !== (item.value.caption || '')) {
+    boardStore.updateItem(item.value.id, { caption: next || undefined })
+    emit('changed')
+    toast.success(next ? 'メモを保存しました' : 'メモをクリアしました')
+  }
+  isEditingCaption.value = false
+}
+
+function setOpacity(opacity: number) {
+  if (!item.value) return
+  boardStore.updateItem(item.value.id, { opacity })
+  emit('changed')
+}
 
 /** 画面端で切れないように位置を補正する */
 async function clampPosition() {
@@ -46,8 +71,8 @@ async function clampPosition() {
   const { offsetWidth: w, offsetHeight: h } = el
   const margin = 8
   position.value = {
-    left: Math.min(props.x, window.innerWidth - w - margin),
-    top: Math.min(props.y, window.innerHeight - h - margin),
+    left: Math.max(margin, Math.min(props.x, window.innerWidth - w - margin)),
+    top: Math.max(margin, Math.min(props.y, window.innerHeight - h - margin)),
   }
 }
 
@@ -77,7 +102,12 @@ function onKeyDown(e: KeyboardEvent) {
 watch(
   () => [props.item, props.x, props.y],
   async () => {
-    if (!props.item) return
+    if (!props.item) {
+      isEditingCaption.value = false
+      return
+    }
+    draftCaption.value = props.item.caption || ''
+    isEditingCaption.value = false
     position.value = { left: props.x, top: props.y }
     await nextTick()
     clampPosition()
@@ -101,17 +131,85 @@ onUnmounted(() => {
     <div v-if="item" class="fixed inset-0 z-[75]" @pointerdown="emit('close')" @contextmenu.prevent="emit('close')">
       <div
         ref="menuRef"
-        class="absolute min-w-[196px] p-1 rounded-xl border border-canvas-border bg-canvas-raised shadow-pop animate-scale-in"
+        class="absolute min-w-[220px] max-w-[calc(100vw-16px)] max-h-[calc(100dvh-16px)] overflow-y-auto p-1 rounded-xl border border-canvas-border bg-canvas-raised shadow-pop animate-scale-in"
         :style="{ left: `${position.left}px`, top: `${position.top}px` }"
         role="menu"
+        aria-label="キャンバス資料の操作メニュー"
         @pointerdown.stop
       >
-        <!-- タイトル -->
-        <div class="px-2.5 py-1.5 border-b border-canvas-border mb-1">
-          <p class="text-[11px] font-semibold text-ink truncate" :title="item.caption || item.media?.original_file_name">
-            {{ item.caption || item.media?.original_file_name || 'Reference' }}
-          </p>
+        <!-- タイトル / キャプション（メモ）編集 -->
+        <div class="px-2.5 py-1.5 border-b border-canvas-border mb-1 space-y-1.5">
+          <div v-if="!isEditingCaption" class="flex items-center justify-between gap-2">
+            <p class="text-[11px] font-semibold text-ink truncate" :title="item.caption || item.media?.original_file_name">
+              {{ item.caption || item.media?.original_file_name || 'Reference' }}
+            </p>
+            <button
+              type="button"
+              class="p-1 rounded text-ink-subtle hover:text-brand hover:bg-canvas-hover transition-colors shrink-0"
+              title="メモ（キャプション）を編集"
+              aria-label="メモを編集"
+              @click="isEditingCaption = true"
+            >
+              <Pencil class="w-3 h-3" />
+            </button>
+          </div>
+          <form v-else class="space-y-1" @submit.prevent="saveCaption">
+            <input
+              v-model="draftCaption"
+              type="text"
+              placeholder="メモ・キャプションを入力..."
+              aria-label="資料のメモ・キャプション"
+              class="w-full bg-canvas-card border border-brand rounded-md px-2 py-1 text-[11px] text-ink focus:outline-none"
+              autofocus
+              @keydown.esc.stop.prevent="isEditingCaption = false"
+            >
+            <div class="flex justify-end gap-1">
+              <button
+                type="button"
+                class="px-1.5 py-0.5 text-[10px] text-ink-muted hover:text-ink"
+                @click="isEditingCaption = false"
+              >
+                キャンセル
+              </button>
+              <button
+                type="submit"
+                class="px-2 py-0.5 rounded bg-brand text-brand-fg text-[10px] font-semibold"
+              >
+                保存
+              </button>
+            </div>
+          </form>
         </div>
+
+        <!-- 不透明度 (Opacity) -->
+        <div class="px-2.5 py-1.5 border-b border-canvas-border mb-1">
+          <p class="text-[10px] text-ink-subtle mb-1">不透明度</p>
+          <div class="grid grid-cols-4 gap-1" role="group" aria-label="不透明度の変更">
+            <button
+              v-for="op in OPACITY_PRESETS"
+              :key="op"
+              type="button"
+              class="py-1 rounded text-[10px] font-mono transition-colors border"
+              :class="Math.abs((item.opacity ?? 1) - op) < 0.05
+                ? 'bg-brand text-brand-fg border-brand font-bold'
+                : 'bg-canvas-card text-ink-muted border-canvas-border hover:text-ink'"
+              :aria-pressed="Math.abs((item.opacity ?? 1) - op) < 0.05"
+              @click="setOpacity(op)"
+            >
+              {{ Math.round(op * 100) }}%
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
+          role="menuitem"
+          @click="run(() => emit('focus-item', item!))"
+        >
+          <Maximize2 class="w-3.5 h-3.5" />
+          <span class="flex-1 text-left">この資料にフォーカス</span>
+        </button>
 
         <!-- 変形 -->
         <button

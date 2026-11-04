@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import {
-  Folder,
+  Bookmark,
   Upload,
   Instagram,
   LayoutGrid,
@@ -11,9 +11,15 @@ import {
   Sparkles,
   Check,
   Compass,
-  Menu,
+  SlidersHorizontal,
+  Undo2,
+  Redo2,
+  Plus,
+  Globe,
+  X,
 } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
+import { useToast } from '~/composables/useToast'
 
 defineProps<{ boardId: string }>()
 
@@ -26,66 +32,25 @@ const emit = defineEmits<{
 }>()
 
 const boardStore = useBoardStore()
+const toast = useToast()
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const openMenu = ref(false)
-const menuButtonRef = ref<HTMLElement | null>(null)
-const menuPanelRef = ref<HTMLElement | null>(null)
-const menuStyle = ref({ left: '0px', top: '0px', width: '208px' })
-let paneObserver: ResizeObserver | null = null
+const isAddModalOpen = ref(false)
+const directUrl = ref('')
 
-function updateMenuPosition() {
-  const button = menuButtonRef.value
-  const pane = button?.closest('[data-canvas-pane]') as HTMLElement | null
-  if (!button || !pane) return
-
-  const trigger = button.getBoundingClientRect()
-  const bounds = pane.getBoundingClientRect()
-  const width = Math.min(208, Math.max(160, bounds.width - 16))
-  const menuHeight = menuPanelRef.value?.offsetHeight || 286
-  const left = Math.max(bounds.left + 8, Math.min(trigger.right - width, bounds.right - width - 8))
-  const top = Math.max(bounds.top + 8, trigger.top - menuHeight - 8)
-  menuStyle.value = { left: `${left}px`, top: `${top}px`, width: `${width}px` }
-}
-
-async function toggleMenu() {
-  openMenu.value = !openMenu.value
-  if (openMenu.value) {
-    await nextTick()
-    updateMenuPosition()
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    openMenu.value = false
+    isAddModalOpen.value = false
   }
 }
 
-function onOutsidePointer(event: PointerEvent) {
-  const target = event.target as Node
-  if (!menuPanelRef.value?.contains(target) && !menuButtonRef.value?.contains(target)) openMenu.value = false
-}
-
-function onMenuKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') openMenu.value = false
-}
-
-watch(openMenu, value => {
-  if (value) {
-    document.addEventListener('pointerdown', onOutsidePointer)
-    document.addEventListener('keydown', onMenuKeydown)
-    window.addEventListener('resize', updateMenuPosition)
-    paneObserver = new ResizeObserver(updateMenuPosition)
-    const pane = menuButtonRef.value?.closest('[data-canvas-pane]')
-    if (pane) paneObserver.observe(pane)
-  } else {
-    document.removeEventListener('pointerdown', onOutsidePointer)
-    document.removeEventListener('keydown', onMenuKeydown)
-    window.removeEventListener('resize', updateMenuPosition)
-    paneObserver?.disconnect()
-    paneObserver = null
-  }
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onOutsidePointer)
-  document.removeEventListener('keydown', onMenuKeydown)
-  window.removeEventListener('resize', updateMenuPosition)
-  paneObserver?.disconnect()
+  window.removeEventListener('keydown', onKeydown)
 })
 
 const ARRANGE_OPTIONS = [
@@ -103,8 +68,22 @@ const THEME_OPTIONS = [
 async function handleFileChange(e: Event) {
   const target = e.target as HTMLInputElement
   if (target.files?.length) {
-    await boardStore.uploadImages(Array.from(target.files), 100, 100)
+    isAddModalOpen.value = false
+    const coords = boardStore.getNextPlacementCoords()
+    await boardStore.uploadImages(Array.from(target.files), coords.x, coords.y)
     target.value = ''
+  }
+}
+
+async function handleDirectUrlAdd() {
+  const url = directUrl.value.trim()
+  if (!url) return
+  const coords = boardStore.getNextPlacementCoords()
+  const res = await boardStore.addBookmark(url, undefined, true, coords.x, coords.y)
+  if (res) {
+    directUrl.value = ''
+    isAddModalOpen.value = false
+    toast.success('キャンバスへ追加しました', url)
   }
 }
 
@@ -123,7 +102,7 @@ function setTheme(theme: string) {
 </script>
 
 <template>
-  <div class="relative flex items-center gap-1 floating-bar px-2 py-1.5 rounded-2xl select-none">
+  <div class="w-max max-w-full overflow-x-auto no-scrollbar flex items-center gap-1 sm:gap-1.5 floating-bar px-2 sm:px-2.5 py-1.5 rounded-2xl select-none shadow-pop whitespace-nowrap">
     <input
       ref="fileInputRef"
       type="file"
@@ -133,165 +112,328 @@ function setTheme(theme: string) {
       @change="handleFileChange"
     >
 
-    <!-- 主要アクション（常に表示） -->
+    <!-- 1. ブックマークブラウザ開閉 -->
     <button
       type="button"
-      class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors border"
+      class="shrink-0 whitespace-nowrap flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border"
       :class="boardStore.isBrowserOpen
-        ? 'bg-brand text-brand-fg border-brand'
-        : 'text-ink-muted hover:text-ink border-canvas-border hover:bg-canvas-hover'"
-      title="資料ライブラリ [B]"
-      aria-label="資料ライブラリの開閉"
+        ? 'bg-brand text-brand-fg border-brand shadow-sm'
+        : 'text-ink hover:text-brand border-canvas-border-strong bg-canvas-bg hover:bg-canvas-hover'"
+      title="ブックマークブラウザを開閉 [B]"
+      aria-label="ブックマークブラウザを開閉"
       :aria-pressed="boardStore.isBrowserOpen"
       @click="boardStore.toggleBrowser()"
     >
-      <Folder class="w-3.5 h-3.5" />
-      <span class="control-label hidden sm:inline">Library</span>
+      <Bookmark class="w-3.5 h-3.5 shrink-0" />
+      <span class="whitespace-nowrap">ブックマーク</span>
+      <span
+        class="hidden sm:inline-block px-1.5 py-0.2 rounded-full text-[10px] font-mono shrink-0"
+        :class="boardStore.isBrowserOpen ? 'bg-white/20 text-white' : 'bg-canvas-card text-ink-muted'"
+      >
+        {{ boardStore.bookmarks.length }}
+      </span>
+    </button>
+
+    <!-- 2. 資料を追加 -->
+    <button
+      type="button"
+      class="shrink-0 whitespace-nowrap flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-brand text-brand-fg hover:bg-brand-hover transition-colors"
+      title="画像・URL・pixiv・Instagramから資料を追加"
+      aria-label="資料を追加"
+      @click="isAddModalOpen = true"
+    >
+      <Plus class="w-3.5 h-3.5 shrink-0" />
+      <span class="whitespace-nowrap">追加</span>
     </button>
 
     <button
       type="button"
-      class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-brand text-brand-fg hover:bg-brand-hover transition-colors"
-      title="画像を追加"
+      class="hidden md:inline-flex shrink-0 p-2 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
+      title="端末の画像を直接アップロード"
+      aria-label="端末の画像を直接アップロード"
       @click="fileInputRef?.click()"
     >
-      <Upload class="w-3.5 h-3.5" />
-      <span class="control-label hidden md:inline">Add Image</span>
+      <Upload class="w-4 h-4 shrink-0" />
     </button>
 
-    <!-- pixiv / Instagram 取り込み -->
+    <div class="h-4 w-px bg-canvas-border mx-0.5 shrink-0" />
+
+    <!-- 3. Undo / Redo -->
     <button
       type="button"
-      class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-pixiv text-white hover:bg-pixiv-hover transition-colors"
-      title="pixivから作品を取り込む"
-      @click="emit('open-pixiv')"
+      class="shrink-0 p-2 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors disabled:opacity-35 disabled:pointer-events-none"
+      title="元に戻す [Cmd+Z]"
+      aria-label="元に戻す"
+      :disabled="!boardStore.canUndo"
+      @click="boardStore.undo()"
     >
-      <Compass class="w-3.5 h-3.5" />
-      <span class="control-label hidden lg:inline">pixiv</span>
+      <Undo2 class="w-4 h-4 shrink-0" />
     </button>
 
     <button
       type="button"
-      class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-instagram text-white hover:bg-instagram-hover transition-colors"
-      title="Instagramから取り込む"
-      @click="emit('open-instagram')"
+      class="shrink-0 p-2 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors disabled:opacity-35 disabled:pointer-events-none"
+      title="やり直し [Cmd+Shift+Z]"
+      aria-label="やり直し"
+      :disabled="!boardStore.canRedo"
+      @click="boardStore.redo()"
     >
-      <Instagram class="w-3.5 h-3.5" />
-      <span class="control-label hidden lg:inline">Instagram</span>
+      <Redo2 class="w-4 h-4 shrink-0" />
     </button>
 
-    <div class="h-4 w-px bg-canvas-border mx-0.5" />
+    <div class="h-4 w-px bg-canvas-border mx-0.5 shrink-0" />
 
+    <!-- 4. 全体表示 & 整列・表示設定 -->
     <button
       type="button"
-      class="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
+      class="hidden sm:inline-flex shrink-0 p-2 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
       title="全アイテムが画面に収まるようフィット [F]"
       aria-label="フィットビュー"
       @click="emit('fit-view')"
     >
-      <Maximize2 class="w-4 h-4" />
+      <Maximize2 class="w-4 h-4 shrink-0" />
     </button>
 
     <button
       type="button"
-      class="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
-      title="ズームを100%に戻す [Cmd+0]"
-      aria-label="ビューを100%にリセット"
-      @click="emit('reset-view')"
+      class="shrink-0 whitespace-nowrap flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-ink hover:bg-canvas-hover border border-canvas-border-strong bg-canvas-bg transition-colors"
+      title="自動整列・表示設定"
+      aria-label="自動整列・表示設定"
+      :aria-expanded="openMenu"
+      @click="openMenu = !openMenu"
     >
-      <RotateCcw class="w-4 h-4" />
+      <SlidersHorizontal class="w-3.5 h-3.5 shrink-0" />
+      <span class="hidden md:inline whitespace-nowrap">整列・表示</span>
     </button>
 
-    <!-- AI インサイト + 保存状態 -->
+    <!-- 5. AI 解析 -->
     <button
       type="button"
-      class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-brand hover:bg-brand-soft transition-colors border border-transparent"
+      class="shrink-0 whitespace-nowrap flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-brand bg-brand-soft hover:bg-brand hover:text-brand-fg transition-colors"
       title="AI 解析パネル [I]"
+      aria-label="AI 解析パネル"
       @click="emit('open-insight')"
     >
-      <Sparkles class="w-3.5 h-3.5" />
-      <span class="control-label hidden lg:inline">AI Inspect</span>
+      <Sparkles class="w-3.5 h-3.5 shrink-0" />
+      <span class="hidden sm:inline whitespace-nowrap">AI解析</span>
     </button>
 
-    <div class="flex items-center gap-1 pl-1 pr-1 text-[11px] text-ink-subtle font-mono">
-      <template v-if="boardStore.isSaving">
-        <div class="w-2.5 h-2.5 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-        <span class="control-label hidden lg:inline">保存中</span>
-      </template>
-      <template v-else>
-        <Check class="w-3 h-3 text-ok" />
-        <span class="control-label hidden lg:inline">保存済</span>
-      </template>
-    </div>
-
-    <!-- その他の操作（自動整列・背景パターン） -->
-    <div class="relative">
-      <button
-        ref="menuButtonRef"
-        type="button"
-        class="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
-        title="その他の操作"
-        aria-label="その他の操作"
-        :aria-expanded="openMenu"
-        @click="toggleMenu"
-      >
-        <Menu class="w-4 h-4" />
-      </button>
-
+    <!-- 保存ステータス -->
+    <div class="hidden sm:flex shrink-0 items-center pl-1 pr-0.5 text-[11px] text-ink-subtle font-mono">
+      <div v-if="boardStore.isSaving" class="w-3 h-3 rounded-full border-2 border-brand border-t-transparent animate-spin" />
+      <Check v-else class="w-3.5 h-3.5 text-ok" title="自動保存済み" />
     </div>
   </div>
 
+  <!-- 統合「キャンバスに資料を追加」モーダル -->
+  <Teleport to="body">
+    <div
+      v-if="isAddModalOpen"
+      class="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-2 sm:p-4 scrim animate-fade-in"
+      @click.self="isAddModalOpen = false"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
+        role="dialog"
+        aria-modal="true"
+        aria-label="キャンバスに資料を追加"
+      >
+        <div class="px-4 py-3 border-b border-canvas-border flex items-center justify-between">
+          <h2 class="text-sm font-bold text-ink flex items-center gap-2">
+            <Plus class="w-4 h-4 text-brand" />
+            <span>キャンバスに資料を追加</span>
+          </h2>
+          <button
+            type="button"
+            class="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
+            aria-label="閉じる"
+            @click="isAddModalOpen = false"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div class="p-4 space-y-3.5 max-h-[82dvh] overflow-y-auto">
+          <!-- URLから直接配置 -->
+          <form class="space-y-1.5" @submit.prevent="handleDirectUrlAdd">
+            <label class="text-xs font-bold text-ink block">URLから直接キャンバスへ配置</label>
+            <div class="flex items-center gap-2">
+              <div class="relative flex-1 flex items-center">
+                <Globe class="absolute left-3 w-3.5 h-3.5 text-ink-subtle pointer-events-none" />
+                <input
+                  v-model="directUrl"
+                  type="url"
+                  placeholder="pixiv / Instagram / Web 画像URL..."
+                  class="w-full bg-canvas-bg border border-canvas-border-strong rounded-xl pl-8 pr-3 py-2 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand"
+                >
+              </div>
+              <button
+                type="submit"
+                class="px-3.5 py-2 rounded-xl bg-brand text-brand-fg hover:bg-brand-hover text-xs font-bold transition-colors disabled:opacity-40 shrink-0 whitespace-nowrap"
+                :disabled="!directUrl.trim() || boardStore.isAddingBookmark"
+              >
+                {{ boardStore.isAddingBookmark ? '追加中...' : '配置' }}
+              </button>
+            </div>
+          </form>
+
+          <div class="border-t border-canvas-border pt-3 space-y-2">
+            <p class="text-xs font-bold text-ink">追加方法を選択</p>
+
+            <button
+              type="button"
+              class="w-full flex items-center gap-3 p-3 rounded-xl bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong text-left transition-colors"
+              @click="isAddModalOpen = false; boardStore.isBrowserOpen = true"
+            >
+              <div class="w-9 h-9 rounded-xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
+                <Bookmark class="w-4 h-4" />
+              </div>
+              <div>
+                <p class="text-xs font-bold text-ink">ブックマークブラウザから配置</p>
+                <p class="text-[11px] text-ink-muted">保存済みフォルダ・ブックマークから選んで配置</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              class="w-full flex items-center gap-3 p-3 rounded-xl bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong text-left transition-colors"
+              @click="fileInputRef?.click()"
+            >
+              <div class="w-9 h-9 rounded-xl bg-brand text-brand-fg flex items-center justify-center shrink-0">
+                <Upload class="w-4 h-4" />
+              </div>
+              <div>
+                <p class="text-xs font-bold text-ink">端末の画像を追加</p>
+                <p class="text-[11px] text-ink-muted">ローカルの画像ファイルを直接アップロード</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              class="w-full flex items-center gap-3 p-3 rounded-xl bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong text-left transition-colors"
+              @click="isAddModalOpen = false; emit('open-pixiv')"
+            >
+              <div class="w-9 h-9 rounded-xl bg-pixiv text-white flex items-center justify-center shrink-0">
+                <Compass class="w-4 h-4" />
+              </div>
+              <div>
+                <p class="text-xs font-bold text-ink">pixivから作品を取り込む</p>
+                <p class="text-[11px] text-ink-muted">キーワード検索やランキングから一括配置</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              class="w-full flex items-center gap-3 p-3 rounded-xl bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong text-left transition-colors"
+              @click="isAddModalOpen = false; emit('open-instagram')"
+            >
+              <div class="w-9 h-9 rounded-xl bg-instagram text-white flex items-center justify-center shrink-0">
+                <Instagram class="w-4 h-4" />
+              </div>
+              <div>
+                <p class="text-xs font-bold text-ink">Instagramから取り込む</p>
+                <p class="text-[11px] text-ink-muted">投稿フィードから画像を選択して取り込む</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- キャンバス整列・ビュー・背景設定モーダル -->
   <Teleport to="body">
     <div
       v-if="openMenu"
-      ref="menuPanelRef"
-      class="fixed z-[80] p-1 rounded-xl border border-canvas-border bg-canvas-raised shadow-pop animate-scale-in"
-      :style="menuStyle"
-      role="menu"
-      aria-label="Canvasのその他の操作"
+      class="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-2 sm:p-4 scrim animate-fade-in"
+      @click.self="openMenu = false"
     >
-        <p class="px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wider text-ink-subtle">
-          自動整列
-        </p>
-        <button
-          v-for="opt in ARRANGE_OPTIONS"
-          :key="opt.id"
-          type="button"
-          class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
-          @click="arrange(opt.id)"
-        >
-          <LayoutGrid class="w-3.5 h-3.5 shrink-0" />
-          <span class="flex-1 text-left">{{ opt.label }}</span>
-        </button>
+      <div
+        class="w-full max-w-sm rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
+        role="dialog"
+        aria-modal="true"
+        aria-label="キャンバスの整列・表示設定"
+      >
+        <div class="px-4 py-3 border-b border-canvas-border flex items-center justify-between">
+          <h2 class="text-sm font-bold text-ink flex items-center gap-2">
+            <SlidersHorizontal class="w-4 h-4 text-brand" />
+            <span>キャンバス整列・表示設定</span>
+          </h2>
+          <button
+            type="button"
+            class="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
+            aria-label="閉じる"
+            @click="openMenu = false"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
 
-        <p class="px-2.5 pt-2 pb-1.5 mt-1 border-t border-canvas-border text-[10px] font-mono uppercase tracking-wider text-ink-subtle">
-          背景パターン
-        </p>
-        <button
-          v-for="opt in THEME_OPTIONS"
-          :key="opt.id"
-          type="button"
-          class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors"
-          :class="boardStore.currentBoard?.background_theme === opt.id
-            ? 'text-brand font-semibold bg-brand-soft'
-            : 'text-ink-muted hover:text-ink hover:bg-canvas-hover'"
-          @click="setTheme(opt.id)"
-        >
-          <Palette class="w-3.5 h-3.5 shrink-0" />
-          <span class="flex-1 text-left">{{ opt.label }}</span>
-          <Check
-            v-if="boardStore.currentBoard?.background_theme === opt.id"
-            class="w-3.5 h-3.5"
-          />
-        </button>
+        <div class="p-4 space-y-4 max-h-[82dvh] overflow-y-auto">
+          <!-- ビュー操作 -->
+          <div class="space-y-2">
+            <p class="text-xs font-bold text-ink">視点・ズーム操作</p>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                class="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong text-xs font-semibold text-ink transition-colors whitespace-nowrap"
+                @click="openMenu = false; emit('fit-view')"
+              >
+                <Maximize2 class="w-3.5 h-3.5 text-brand shrink-0" />
+                <span>全体表示</span>
+              </button>
+              <button
+                type="button"
+                class="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong text-xs font-semibold text-ink transition-colors whitespace-nowrap"
+                @click="openMenu = false; emit('reset-view')"
+              >
+                <RotateCcw class="w-3.5 h-3.5 text-ink-muted shrink-0" />
+                <span>100%リセット</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 自動整列 -->
+          <div class="pt-3 border-t border-canvas-border space-y-2">
+            <p class="text-xs font-bold text-ink">自動整列</p>
+            <div class="space-y-1.5">
+              <button
+                v-for="opt in ARRANGE_OPTIONS"
+                :key="opt.id"
+                type="button"
+                class="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong text-xs font-medium text-ink transition-colors"
+                @click="arrange(opt.id)"
+              >
+                <span class="flex items-center gap-2 font-semibold whitespace-nowrap">
+                  <LayoutGrid class="w-3.5 h-3.5 text-brand shrink-0" />
+                  {{ opt.label }}
+                </span>
+                <span class="text-[11px] text-ink-muted truncate">{{ opt.hint }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 背景パターン -->
+          <div class="pt-3 border-t border-canvas-border space-y-2">
+            <p class="text-xs font-bold text-ink">背景パターン</p>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button
+                v-for="opt in THEME_OPTIONS"
+                :key="opt.id"
+                type="button"
+                class="flex flex-col items-center justify-center gap-1 py-2.5 px-2 rounded-xl text-xs border transition-colors whitespace-nowrap"
+                :class="boardStore.currentBoard?.background_theme === opt.id
+                  ? 'text-brand font-bold bg-brand-soft border-brand'
+                  : 'text-ink font-medium bg-canvas-bg border-canvas-border-strong hover:bg-canvas-hover'"
+                @click="setTheme(opt.id)"
+              >
+                <Palette class="w-4 h-4 shrink-0" />
+                <span>{{ opt.label }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </Teleport>
 </template>
-
-<style scoped>
-@container canvas-pane (max-width: 720px) {
-  .control-label {
-    display: none;
-  }
-}
-</style>

@@ -7,10 +7,16 @@ connect_args = {}
 if settings.DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
+# 既定の QueuePool（5+10=15）は、pixiv 画像の並列取得などの突発負荷で
+# 枯渇しやすく、枯渇すると全 API が30秒待って500になる（鯖落ち状態）。
+# 並列取得側で接続を握らないようにしたうえで、余裕も確保しておく。
 engine = create_engine(
     settings.DATABASE_URL,
     connect_args=connect_args,
     pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
     echo=False
 )
 

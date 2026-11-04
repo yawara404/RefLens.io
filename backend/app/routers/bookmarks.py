@@ -42,6 +42,11 @@ class FolderCreateRequest(BaseModel):
 class UpdateFolderRequest(BaseModel):
     folder_name: str
 
+class FolderUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+
 # ----------------------------------------------------------------------
 # pixiv 作品メタデータ取得（ローカル接続済みなら非公開App APIを使う）
 # ----------------------------------------------------------------------
@@ -200,6 +205,60 @@ async def extract_url_metadata(url: str, db: Session = None, user: User = None):
         "image_url": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=800&auto=format&fit=crop&q=80"
     }
 
+_LOCAL_PALETTE_CACHE: dict[str, list[str]] = {}
+_DUMMY_PALETTES = {
+    ("#ffffff", "#000000", "#808080", "#cccccc", "#333333"),
+    ("#ffffff", "#000000", "#808080", "#c0c0c0", "#e0e0e0"),
+    ("#d3d3d3", "#ffffff", "#000000", "#808080", "#c0c0c0"),
+    ("#d3d3d3", "#ffffff", "#000000", "#808080", "#a9a9a9"),
+    ("#ffffff", "#333333", "#808080", "#eeeeee", "#000000"),
+}
+
+
+def _resolve_item_palette(file_path: Optional[str], ai_palette: Optional[list]) -> list[str]:
+    """AI解析パレットが有効ならそれを使い、未解析やプレースホルダ時は画像から5色を抽出する。"""
+    if ai_palette and len(ai_palette) > 0:
+        normalized = tuple(str(c).lower() for c in ai_palette)
+        if normalized not in _DUMMY_PALETTES:
+            return list(ai_palette)
+
+    if not file_path:
+        return list(ai_palette or [])
+
+    if file_path in _LOCAL_PALETTE_CACHE:
+        return _LOCAL_PALETTE_CACHE[file_path]
+
+    try:
+        filename = Path(file_path).name
+        local_file = settings.UPLOAD_DIR / filename
+        if not local_file.exists():
+            return list(ai_palette or [])
+
+        with Image.open(local_file) as img:
+            small = img.convert("RGB").resize((64, 64))
+            quantized = small.quantize(colors=8, method=Image.Quantize.MEDIANCUT)
+            raw_pal = quantized.getpalette() or []
+            counts = sorted(quantized.getcolors() or [], reverse=True)
+            colors: list[str] = []
+            for _cnt, idx in counts:
+                base = idx * 3
+                if base + 2 >= len(raw_pal):
+                    continue
+                r, g, b = raw_pal[base], raw_pal[base + 1], raw_pal[base + 2]
+                hex_code = f"#{r:02x}{g:02x}{b:02x}"
+                if hex_code not in colors:
+                    colors.append(hex_code)
+                if len(colors) >= 5:
+                    break
+            if colors:
+                _LOCAL_PALETTE_CACHE[file_path] = colors
+                return colors
+    except Exception:
+        pass
+
+    return list(ai_palette or [])
+
+
 @router.get("/")
 def get_bookmarks(
     source_type: Optional[str] = None, # all, instagram, web_bookmark, local_upload
@@ -241,6 +300,16 @@ def get_bookmarks(
             if q_lower not in text_corpus.lower():
                 continue
 
+        palette = _resolve_item_palette(it.file_path, ai.palette_json if ai else None)
+        ai_payload = {
+            "composition": ai.composition if ai else "",
+            "lighting": ai.lighting if ai else "",
+            "pose_anatomy": ai.pose_anatomy if ai else "",
+            "costume_structure": ai.costume_structure if ai else "",
+            "palette": palette,
+            "tags": (ai.tags_json or []) if ai else [],
+        } if (ai or palette) else None
+
         results.append({
             "id": it.id,
             "title": it.title or it.original_file_name or "Untitled Reference",
@@ -256,14 +325,7 @@ def get_bookmarks(
             "folder_name": it.folder_name,
             "board_id": it.board_id,
             "created_at": it.created_at.isoformat(),
-            "ai_analysis": {
-                "composition": ai.composition,
-                "lighting": ai.lighting,
-                "pose_anatomy": ai.pose_anatomy,
-                "costume_structure": ai.costume_structure,
-                "palette": ai.palette_json,
-                "tags": ai.tags_json,
-            } if ai else None
+            "ai_analysis": ai_payload,
         })
 
     return results
@@ -568,3 +630,66 @@ def create_folder(
     db.commit()
     db.refresh(folder)
     return {"id": folder.id, "name": folder.name, "color": folder.color, "icon": folder.icon}
+
+@router.put("/folders/{folder_id}")
+def update_folder(
+    folder_id: str,
+    payload: FolderUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """ユーザー作成フォルダの名前・色・アイコンを更新する。
+
+    folder_name は MediaItem 側に文字列で保持しているため、名前を変えた場合は
+    そのフォルダに入っている資料の folder_name もまとめて追従させる。
+    """
+    folder = db.query(Folder).filter(Folder.id == folder_id, Folder.user_id == user.id).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    old_name = folder.name
+    new_name = (payload.name or "").strip()
+    if new_name and new_name != old_name:
+        if new_name == "All References":
+            raise HTTPException(status_code=400, detail="Reserved folder name")
+        duplicated = db.query(Folder).filter(
+            Folder.user_id == user.id, Folder.name == new_name, Folder.id != folder.id
+        ).first()
+        if duplicated:
+            raise HTTPException(status_code=409, detail="Folder already exists")
+
+        folder.name = new_name
+        db.query(MediaItem).filter(
+            MediaItem.user_id == user.id, MediaItem.folder_name == old_name
+        ).update({MediaItem.folder_name: new_name}, synchronize_session=False)
+
+    if payload.color:
+        folder.color = payload.color
+    if payload.icon:
+        folder.icon = payload.icon
+
+    db.commit()
+    db.refresh(folder)
+    return {"id": folder.id, "name": folder.name, "color": folder.color, "icon": folder.icon}
+
+@router.delete("/folders/{folder_id}")
+def delete_folder(
+    folder_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """ユーザー作成フォルダを削除する。
+
+    中の資料は削除せず "All References" へ戻す（資料を失わせないため）。
+    """
+    folder = db.query(Folder).filter(Folder.id == folder_id, Folder.user_id == user.id).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    db.query(MediaItem).filter(
+        MediaItem.user_id == user.id, MediaItem.folder_name == folder.name
+    ).update({MediaItem.folder_name: "All References"}, synchronize_session=False)
+
+    db.delete(folder)
+    db.commit()
+    return {"message": "Folder deleted"}

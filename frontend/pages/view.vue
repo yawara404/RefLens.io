@@ -24,6 +24,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-vue-next'
 import AppHeader from '~/components/ui/AppHeader.vue'
+import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
 import PixivImage from '~/components/ui/PixivImage.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
 import { useBoardStore } from '~/stores/boardStore'
@@ -31,16 +32,22 @@ import { usePixiv, type PixivArtwork } from '~/composables/usePixiv'
 import { useBackendUrl } from '~/composables/useBackendUrl'
 import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useToast } from '~/composables/useToast'
+import { useMobileNav } from '~/composables/useMobileNav'
 
 const boardStore = useBoardStore()
 const pixiv = usePixiv()
 const toast = useToast()
 const { apiBase } = useBackendUrl()
 const { resolveMediaUrl } = useMediaUrl()
+const { isOpen: isSidebarOpen } = useMobileNav()
 
 const searchInput = ref('')
 const viewMainRef = ref<HTMLElement | null>(null)
 const activeCategory = ref('recommended')
+const isFilterModalOpen = ref(false)
+const activeCategoryLabel = computed(
+  () => CATEGORIES.find(c => c.id === activeCategory.value)?.label || 'おすすめ'
+)
 const savedBookmarks = computed(() => {
   const query = searchInput.value.trim().toLowerCase()
   const pixivBookmarks = boardStore.bookmarks.filter(item => item.source_type === 'pixiv')
@@ -87,7 +94,24 @@ const CATEGORIES = [
   { id: 'search', label: '検索', hint: 'キーワード検索', icon: Search, requiresAuth: false },
 ]
 
-const isSidebarOpen = ref(false)
+let detailTouchStartX = 0
+let detailTouchStartY = 0
+
+function onDetailTouchStart(e: TouchEvent) {
+  if (e.touches.length !== 1) return
+  detailTouchStartX = e.touches[0].clientX
+  detailTouchStartY = e.touches[0].clientY
+}
+
+function onDetailTouchEnd(e: TouchEvent) {
+  if (e.changedTouches.length !== 1 || currentPageImages.value.length <= 1) return
+  const dx = e.changedTouches[0].clientX - detailTouchStartX
+  const dy = e.changedTouches[0].clientY - detailTouchStartY
+  if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+    if (dx > 0 && activePageIndex.value > 0) activePageIndex.value--
+    else if (dx < 0 && activePageIndex.value < currentPageImages.value.length - 1) activePageIndex.value++
+  }
+}
 
 function openAccountSwitcher() {
   window.dispatchEvent(new Event('reflens:auth-switch'))
@@ -128,8 +152,8 @@ function pickCategory(id: string) {
   } else {
     pixiv.loadFeed(id, 1)
   }
-  // モバイルではサイドバーを閉じて結果を全面表示させる
-  if (window.matchMedia('(max-width: 1023px)').matches) isSidebarOpen.value = false
+  // モバイルではハンバーガーメニューを閉じて結果を全面表示させる
+  if (window.matchMedia('(max-width: 767px)').matches) isSidebarOpen.value = false
 }
 
 /** ソート / 期間を変更したら再読み込み（検索カテゴリのときだけ有効） */
@@ -286,6 +310,23 @@ async function onAuthChanged() {
   }
 }
 
+function onViewKeyDown(e: KeyboardEvent) {
+  if (activeArtwork.value) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeDetail()
+    } else if (e.key === 'ArrowLeft' && activePageIndex.value > 0) {
+      e.preventDefault()
+      activePageIndex.value--
+    } else if (e.key === 'ArrowRight' && activePageIndex.value < currentPageImages.value.length - 1) {
+      e.preventDefault()
+      activePageIndex.value++
+    }
+  } else if (e.key === 'Escape' && isSidebarOpen.value) {
+    isSidebarOpen.value = false
+  }
+}
+
 onMounted(async () => {
   await pixiv.init()
   boardStore.fetchBookmarks()
@@ -293,156 +334,78 @@ onMounted(async () => {
   // ログイン / ログアウトでユーザーごとに変わる
   // pixiv の接続状態（トークンはユーザーごとに持つ）を取り直す
   window.addEventListener('reflens:auth-changed', onAuthChanged)
+  window.addEventListener('keydown', onViewKeyDown)
 })
 
-onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChanged))
+onUnmounted(() => {
+  window.removeEventListener('reflens:auth-changed', onAuthChanged)
+  window.removeEventListener('keydown', onViewKeyDown)
+})
 </script>
 
 <template>
-  <div class="min-h-screen bg-canvas-bg text-ink flex flex-col antialiased">
-    <AppHeader />
+  <div class="h-app-screen overflow-hidden bg-canvas-bg text-ink flex flex-col antialiased">
+    <AppHeader class="shrink-0" />
 
-    <!-- サブヘッダー: 接続状態と検索（カテゴリはサイドバーへ移動） -->
-    <div class="border-b border-canvas-border bg-canvas-panel px-4 md:px-6 py-2.5 sticky top-14 z-30">
-      <div class="max-w-[1600px] mx-auto flex items-center gap-2.5">
-        <!-- モバイル: サイドバー開閉 -->
-        <button
-          type="button"
-          class="lg:hidden p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
-          :aria-expanded="isSidebarOpen"
-          aria-label="カテゴリメニュー"
-          @click="isSidebarOpen = !isSidebarOpen"
-        >
-          <Menu class="w-4 h-4" />
-        </button>
-
-        <!-- タイトルと接続状態 -->
-        <div class="flex items-center gap-2 min-w-0 shrink-0">
-          <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-pixiv text-white font-mono">
-            pixiv
-          </span>
-
-          <template v-if="pixiv.isConnected.value">
-            <PixivImage
-              v-if="pixiv.status.value?.account?.avatar_url"
-              :src="pixiv.proxyImage(pixiv.status.value.account.avatar_url)"
-              :alt="pixiv.accountName.value"
-              class="w-5 h-5 rounded-full shrink-0"
-            />
-            <span class="text-[11px] text-ink-muted truncate hidden sm:inline">
-              <span class="text-pixiv font-medium">{{ pixiv.accountName.value }}</span>
-            </span>
-            <button
-              type="button"
-              class="p-1 rounded text-ink-subtle hover:text-danger hover:bg-danger-soft transition-colors shrink-0"
-              title="接続を解除"
-              aria-label="pixiv接続を解除"
-              @click="pixiv.disconnect()"
-            >
-              <LogOut class="w-3.5 h-3.5" />
-            </button>
-          </template>
-          <button
-            v-else-if="pixiv.canConnect.value"
-            type="button"
-            class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-pixiv text-white hover:bg-pixiv-hover transition-colors shrink-0"
-            @click="pixiv.connect()"
-          >
-            Pixivに接続
-          </button>
-          <span v-else class="text-[11px] text-ink-subtle hidden sm:inline">デモフィード</span>
-        </div>
-
-        <!-- 検索 -->
-        <form
-          class="relative flex-1 flex items-center min-w-0"
-          @submit.prevent="submitSearch"
-        >
-          <Search class="absolute left-3 w-3.5 h-3.5 text-ink-subtle pointer-events-none" />
-          <input
-            v-model="searchInput"
-            type="search"
-            :placeholder="activeCategory === 'saved' ? 'RefLensに保存したpixiv作品を検索' : 'タグ・キーワードで検索（例: ポーズ参考、逆光、衣装）'"
-            class="w-full bg-canvas-card border border-canvas-border rounded-full pl-8 pr-8 py-1.5 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-pixiv transition-colors"
-            aria-label="pixiv作品を検索"
-          >
-          <button
-            v-if="searchInput"
-            type="button"
-            class="absolute right-2.5 text-ink-subtle hover:text-ink transition-colors"
-            aria-label="検索をクリア"
-            @click="searchInput = ''"
-          >
-            <X class="w-3.5 h-3.5" />
-          </button>
-        </form>
-
-        <!-- 更新 -->
-        <button
-          type="button"
-          class="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
-          title="再読み込み"
-          aria-label="再読み込み"
-          @click="activeCategory === 'saved' ? boardStore.fetchBookmarks() : pixiv.loadFeed()"
-        >
-          <RefreshCw class="w-4 h-4" :class="activeCategory !== 'saved' && pixiv.isLoading.value ? 'animate-spin' : ''" />
-        </button>
-      </div>
-    </div>
-
-    <!-- ワークスペース: サイドバー + 作品グリッド -->
-    <div class="flex-1 flex max-w-[1600px] w-full mx-auto overflow-hidden">
-      <!-- サイドバー: カテゴリ + 検索フィルタ -->
+    <!-- ワークスペース: サイドバー + メイン（検索バー・作品グリッド一体スクロール） -->
+    <div class="flex-1 min-h-0 flex max-w-[1600px] w-full mx-auto overflow-hidden">
+      <!-- サイドバー: ナビゲーション（モバイル）+ カテゴリ + 検索フィルタ -->
       <aside
-        class="w-56 shrink-0 border-r border-canvas-border bg-canvas-panel overflow-y-auto shrink-0"
-        :class="isSidebarOpen ? 'fixed inset-y-0 left-0 top-14 z-40 w-64 shadow-pop' : 'hidden lg:block'"
+        class="shrink-0 overflow-y-auto overscroll-contain"
+        :class="isSidebarOpen
+          ? 'fixed inset-x-0 top-14 bottom-0 z-40 w-full h-[calc(100dvh-3.5rem)] bg-canvas-panel border-t border-canvas-border shadow-pop p-4 pb-10 md:static md:w-64 md:h-full md:border-t-0 md:border-r md:border-canvas-border md:bg-canvas-panel md:shadow-none md:p-0'
+          : 'hidden md:block md:w-64 md:h-full md:border-r md:border-canvas-border md:bg-canvas-panel'"
         aria-label="pixivカテゴリ"
       >
-        <div class="p-3 space-y-4">
+        <div class="md:p-3.5 space-y-4">
+          <div class="md:hidden pb-3 border-b border-canvas-border">
+            <MobileNavLinks :show-site-links="true" />
+          </div>
           <!-- カテゴリ -->
-          <nav>
-            <p class="text-[10px] font-mono text-ink-subtle uppercase tracking-wider px-1 mb-1.5">
+          <nav class="space-y-1">
+            <p class="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider px-1.5 mb-1.5">
               Browse
             </p>
             <button
               v-for="cat in CATEGORIES"
               :key="cat.id"
               type="button"
-              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] transition-colors text-left"
+              class="w-full flex items-center gap-2.5 px-3 py-2.5 md:py-2 rounded-xl text-xs transition-colors text-left"
               :class="activeCategory === cat.id
-                ? 'bg-brand-soft text-brand font-semibold'
-                : 'text-ink-muted hover:text-ink hover:bg-canvas-hover'"
+                ? 'bg-brand text-brand-fg font-bold shadow-sm'
+                : 'text-ink hover:bg-canvas-hover font-semibold'"
               :disabled="isCategoryDisabled(cat)"
               :title="isCategoryDisabled(cat) ? 'Pixivに接続すると利用できます' : cat.hint"
               :aria-current="activeCategory === cat.id ? 'page' : undefined"
               @click="pickCategory(cat.id)"
             >
-              <component :is="cat.icon" class="w-3.5 h-3.5 shrink-0" />
+              <component :is="cat.icon" class="w-4 h-4 shrink-0" :class="activeCategory === cat.id ? 'text-brand-fg' : 'text-ink-muted'" />
               <span class="flex-1">{{ cat.label }}</span>
               <span
                 v-if="isCategoryDisabled(cat)"
-                class="text-[9px] text-ink-subtle shrink-0"
+                class="text-[10px] shrink-0"
+                :class="activeCategory === cat.id ? 'text-brand-fg/80' : 'text-ink-muted'"
               >要ログイン</span>
             </button>
           </nav>
 
           <!-- 検索フィルタ（検索カテゴリのときだけ有効） -->
           <div class="pt-3 border-t border-canvas-border space-y-3">
-            <p class="text-[10px] font-mono text-ink-subtle uppercase tracking-wider px-1 flex items-center gap-1">
+            <p class="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider px-1.5 flex items-center gap-1">
               <SlidersHorizontal class="w-3 h-3" />
               Filters
             </p>
 
-            <fieldset :disabled="activeCategory !== 'search'" class="space-y-2 disabled:opacity-40">
+            <fieldset :disabled="activeCategory !== 'search'" class="space-y-2.5 disabled:opacity-40">
               <legend class="sr-only">ソート順</legend>
               <div>
-                <p class="text-[10px] text-ink-muted mb-1 px-1">並び順</p>
-                <div class="space-y-0.5">
+                <p class="text-[11px] font-medium text-ink-muted mb-1 px-1">並び順</p>
+                <div class="space-y-1">
                   <label
                     v-for="opt in SORT_OPTIONS"
                     :key="opt.id"
-                    class="flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] cursor-pointer hover:bg-canvas-hover transition-colors"
-                    :class="sortMode === opt.id ? 'text-brand font-semibold' : 'text-ink-muted'"
+                    class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs md:text-[11px] cursor-pointer hover:bg-canvas-hover transition-colors"
+                    :class="sortMode === opt.id ? 'text-brand font-bold bg-brand-soft/60' : 'text-ink font-medium'"
                   >
                     <input
                       v-model="sortMode"
@@ -457,10 +420,10 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
               </div>
 
               <div>
-                <p class="text-[10px] text-ink-muted mb-1 px-1">投稿期間</p>
+                <p class="text-[11px] font-medium text-ink-muted mb-1 px-1">投稿期間</p>
                 <select
                   v-model="durationMode"
-                  class="w-full bg-canvas-card border border-canvas-border rounded-lg px-2 py-1.5 text-[11px] text-ink focus:outline-none focus:border-pixiv transition-colors"
+                  class="w-full bg-canvas-bg border border-canvas-border-strong rounded-xl px-2.5 py-2 text-xs md:text-[11px] font-medium text-ink focus:outline-none focus:border-pixiv transition-colors"
                   aria-label="投稿期間"
                   @change="applyFilters"
                 >
@@ -474,10 +437,10 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
 
           <!-- 接続状態 -->
           <div class="pt-3 border-t border-canvas-border">
-            <p class="text-[10px] font-mono text-ink-subtle uppercase tracking-wider px-1 mb-1.5">
+            <p class="text-[10px] font-mono font-semibold text-ink-muted uppercase tracking-wider px-1.5 mb-1.5">
               Account
             </p>
-            <div v-if="pixiv.isConnected.value" class="px-2.5 py-2 rounded-lg bg-canvas-card border border-canvas-border">
+            <div v-if="pixiv.isConnected.value" class="px-3 py-2.5 rounded-xl bg-canvas-bg border border-canvas-border-strong">
               <div class="flex items-center gap-2">
                 <PixivImage
                   v-if="pixiv.status.value?.account?.avatar_url"
@@ -486,21 +449,21 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
                   class="w-6 h-6 rounded-full shrink-0"
                 />
                 <div class="min-w-0">
-                  <p class="text-[11px] font-medium text-ink truncate">{{ pixiv.accountName.value }}</p>
-                  <p v-if="pixiv.status.value?.account?.account" class="text-[10px] text-ink-subtle truncate">
+                  <p class="text-xs font-semibold text-ink truncate">{{ pixiv.accountName.value }}</p>
+                  <p v-if="pixiv.status.value?.account?.account" class="text-[10px] text-ink-muted truncate">
                     @{{ pixiv.status.value.account.account }}
                   </p>
                 </div>
               </div>
             </div>
-            <div v-else class="px-2.5 py-2 rounded-lg bg-canvas-card border border-canvas-border space-y-1.5">
-              <p class="text-[11px] text-ink-muted leading-relaxed">
+            <div v-else class="px-3 py-2.5 rounded-xl bg-canvas-bg border border-canvas-border-strong space-y-2">
+              <p class="text-xs text-ink leading-relaxed">
                 {{ pixiv.statusMessage.value || 'デモフィードを表示中' }}
               </p>
               <button
                 v-if="pixiv.canConnect.value"
                 type="button"
-                class="w-full py-1.5 rounded-lg bg-pixiv text-white text-[11px] font-semibold hover:bg-pixiv-hover transition-colors"
+                class="w-full py-2 rounded-lg bg-pixiv text-white text-xs font-bold hover:bg-pixiv-hover transition-colors"
                 @click="pixiv.connect()"
               >
                 Pixivでログイン
@@ -510,15 +473,98 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
         </div>
       </aside>
 
-      <!-- モバイル時のサイドバー背景 -->
-      <div
-        v-if="isSidebarOpen"
-        class="lg:hidden fixed inset-0 top-14 bg-canvas-bg/60 z-30"
-        @click="isSidebarOpen = false"
-      />
+      <!-- メイン: 接続状態・検索バー + 作品グリッド（一体でスクロール） -->
+      <main id="main-content" ref="viewMainRef" tabindex="-1" class="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 md:px-6 pt-2.5 sm:pt-4 pb-8 min-w-0 space-y-3 sm:space-y-4 focus:outline-none">
+        <!-- 検索・カテゴリ・フィルタパネル（モバイルでも見切れず操作しやすい2段構成） -->
+        <section class="p-2.5 sm:p-3.5 rounded-2xl border border-canvas-border bg-canvas-panel space-y-2.5" aria-label="pixiv検索と絞り込み">
+          <!-- 上段: ステータス + モーダル起動ボタン + 再読み込み -->
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-pixiv text-white font-mono shrink-0">
+                pixiv
+              </span>
+              <span class="text-xs font-bold text-ink truncate">
+                {{ activeCategoryLabel }}
+              </span>
+              <span
+                v-if="pixiv.isConnected.value"
+                class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-canvas-bg border border-canvas-border text-[11px] text-ink-muted truncate max-w-[160px]"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-ok shrink-0" />
+                <span class="truncate">{{ pixiv.accountName.value }}</span>
+              </span>
+            </div>
 
-      <!-- 作品グリッド -->
-      <main ref="viewMainRef" class="flex-1 overflow-y-auto px-4 md:px-6 py-5 min-w-0">
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                class="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-canvas-bg hover:bg-canvas-hover text-ink border border-canvas-border-strong transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                @click="isFilterModalOpen = true"
+              >
+                <SlidersHorizontal class="w-3.5 h-3.5 text-pixiv shrink-0" />
+                <span>絞り込み・連携</span>
+              </button>
+
+              <button
+                type="button"
+                class="p-1.5 rounded-xl bg-canvas-bg hover:bg-canvas-hover text-ink-muted hover:text-ink border border-canvas-border-strong transition-colors shrink-0"
+                title="再読み込み"
+                aria-label="再読み込み"
+                @click="activeCategory === 'saved' ? boardStore.fetchBookmarks() : pixiv.loadFeed()"
+              >
+                <RefreshCw class="w-4 h-4" :class="activeCategory !== 'saved' && pixiv.isLoading.value ? 'animate-spin text-pixiv' : ''" />
+              </button>
+            </div>
+          </div>
+
+          <!-- 中段: フル幅検索バー（モバイルでも見切れない） -->
+          <form
+            class="relative flex items-center min-w-0"
+            @submit.prevent="submitSearch"
+          >
+            <Search class="absolute left-3 w-3.5 h-3.5 text-ink-subtle pointer-events-none" />
+            <input
+              v-model="searchInput"
+              type="search"
+              :placeholder="activeCategory === 'saved' ? '保存済みpixivを検索...' : 'タグ・キーワードで検索...'"
+              class="w-full bg-canvas-card border border-canvas-border rounded-xl pl-8 pr-20 py-1.5 sm:py-2 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-pixiv transition-colors"
+              aria-label="pixiv作品を検索"
+            >
+            <button
+              v-if="searchInput"
+              type="button"
+              class="absolute right-14 p-1 text-ink-subtle hover:text-ink transition-colors"
+              aria-label="検索をクリア"
+              @click="searchInput = ''"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="submit"
+              class="absolute right-1.5 px-2.5 py-1 rounded-lg bg-pixiv text-white hover:bg-pixiv-hover text-[11px] font-bold transition-colors"
+            >
+              検索
+            </button>
+          </form>
+
+          <!-- 下段（モバイル向けクイックカテゴリ切替） -->
+          <div class="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
+            <button
+              v-for="cat in CATEGORIES"
+              :key="cat.id"
+              type="button"
+              class="px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-colors flex items-center gap-1 border shrink-0 disabled:opacity-40"
+              :class="activeCategory === cat.id
+                ? 'bg-pixiv text-white border-pixiv'
+                : 'bg-canvas-bg text-ink border-canvas-border'"
+              :disabled="isCategoryDisabled(cat)"
+              @click="pickCategory(cat.id)"
+            >
+              <component :is="cat.icon" class="w-3 h-3 shrink-0" />
+              <span>{{ cat.label }}</span>
+            </button>
+          </div>
+        </section>
       <!-- 通知バー -->
       <div
         v-if="activeCategory !== 'saved' && pixiv.notice.value"
@@ -539,8 +585,13 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
           <article
             v-for="item in savedBookmarks"
             :key="item.id"
-            class="group rounded-xl border border-canvas-border bg-canvas-card overflow-hidden cursor-pointer hover:border-canvas-border-strong transition-colors"
+            tabindex="0"
+            role="button"
+            :aria-label="`${item.title} のプレビューを開く`"
+            class="group rounded-xl border border-canvas-border bg-canvas-card overflow-hidden cursor-pointer hover:border-canvas-border-strong focus-visible:border-brand transition-colors"
             @click="boardStore.openQuickLook(item)"
+            @keydown.enter.self.prevent="boardStore.openQuickLook(item)"
+            @keydown.space.self.prevent="boardStore.openQuickLook(item)"
           >
             <div class="relative aspect-[4/3] bg-canvas-sunken overflow-hidden">
               <img :src="resolveMediaUrl(item.file_path)" :alt="item.title" class="w-full h-full object-cover" loading="lazy">
@@ -571,11 +622,16 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
         <article
           v-for="item in pixiv.items.value"
           :key="item.id"
+          tabindex="0"
+          role="button"
+          :aria-label="`${item.title} の詳細を開く`"
           class="group flex flex-col rounded-xl border bg-canvas-card overflow-hidden transition-colors cursor-pointer"
           :class="pixiv.isSelected(item.id)
             ? 'border-pixiv ring-2 ring-pixiv/40'
-            : 'border-canvas-border hover:border-canvas-border-strong'"
+            : 'border-canvas-border hover:border-canvas-border-strong focus-visible:border-pixiv'"
           @click="openDetail(item)"
+          @keydown.enter.self.prevent="openDetail(item)"
+          @keydown.space.self.prevent="openDetail(item)"
         >
           <!-- サムネイル -->
           <div class="relative aspect-[4/3] bg-canvas-sunken overflow-hidden">
@@ -586,17 +642,18 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
               loading="lazy"
             />
 
-            <!-- 選択チェック -->
+            <!-- 選択チェック（モバイルでは常時表示してタップで複数選択可能に） -->
             <button
               type="button"
-              class="absolute top-2 right-2 w-5 h-5 rounded-full border flex items-center justify-center transition-all"
+              class="absolute top-2 right-2 z-20 w-6 h-6 sm:w-5 sm:h-5 rounded-full border flex items-center justify-center transition-all shadow-sm"
               :class="pixiv.isSelected(item.id)
                 ? 'bg-pixiv border-pixiv opacity-100'
-                : 'bg-canvas-panel/85 border-canvas-border-strong opacity-0 group-hover:opacity-100'"
+                : 'bg-canvas-panel/90 border-canvas-border-strong opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100'"
               :aria-label="pixiv.isSelected(item.id) ? '選択解除' : '選択'"
+              :aria-pressed="pixiv.isSelected(item.id)"
               @click.stop="toggleSelect(item.id)"
             >
-              <Check v-if="pixiv.isSelected(item.id)" class="w-3 h-3 text-white stroke-[3]" />
+              <Check v-if="pixiv.isSelected(item.id)" class="w-3.5 h-3.5 sm:w-3 sm:h-3 text-white stroke-[3]" />
             </button>
 
             <!-- バッジ -->
@@ -628,9 +685,9 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
               {{ formatCount(item.bookmarks) }}
             </span>
 
-            <!-- ホバー: クイックアクション -->
+            <!-- ホバー: クイックアクション（PC向け、モバイルはカードタップで詳細・右上チェックで選択） -->
             <div
-              class="absolute inset-0 bg-canvas-panel/70 opacity-0 group-hover:opacity-100 transition-opacity p-2.5 flex flex-col justify-between"
+              class="hidden sm:flex absolute inset-0 bg-canvas-panel/70 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity p-2.5 flex-col justify-between"
             >
               <a
                 :href="item.source_url"
@@ -661,11 +718,11 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
 
           <!-- 情報 -->
           <div class="p-2.5 bg-canvas-card space-y-1.5 flex-1 flex flex-col">
-            <h3 class="text-[11px] font-semibold text-ink line-clamp-2 leading-snug" :title="item.title">
+            <h3 class="text-[11px] font-bold text-ink line-clamp-2 leading-snug" :title="item.title">
               {{ item.title }}
             </h3>
 
-            <div class="flex items-center gap-1.5 text-[10px] text-ink-subtle">
+            <div class="flex items-center gap-1.5 text-[10px] font-medium text-ink-muted">
               <PixivImage
                 v-if="item.author_avatar"
                 :src="item.author_avatar"
@@ -681,7 +738,7 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
                 v-for="tag in item.tags.slice(0, 3)"
                 :key="tag"
                 type="button"
-                class="px-1.5 py-0.5 rounded text-[10px] bg-canvas-raised text-ink-muted border border-canvas-border hover:text-pixiv hover:border-pixiv transition-colors truncate max-w-[90px]"
+                class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-canvas-raised text-ink border border-canvas-border hover:text-pixiv hover:border-pixiv transition-colors truncate max-w-[90px]"
                 @click.stop="searchInput = tag; submitSearch()"
               >
                 #{{ tag }}
@@ -719,25 +776,25 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
     <!-- 一括アクションバー -->
     <div
       v-if="activeCategory !== 'saved' && pixiv.selectedIds.value.length"
-      class="sticky bottom-4 z-40 flex justify-center px-4 pointer-events-none"
+      class="fixed bottom-safe inset-x-0 z-40 flex justify-center px-3 sm:px-4 pointer-events-none"
     >
       <div
-        class="pointer-events-auto flex items-center gap-3 floating-bar px-4 py-2 rounded-2xl animate-slide-up"
+        class="pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 floating-bar px-3 sm:px-4 py-2 rounded-2xl animate-slide-up max-w-full"
       >
         <button
           type="button"
-          class="text-[11px] text-ink-subtle hover:text-ink transition-colors"
+          class="text-[11px] text-ink-subtle hover:text-ink transition-colors whitespace-nowrap"
           @click="toggleSelectAll"
         >
           {{ allSelected ? '選択解除' : 'すべて選択' }}
         </button>
-        <span class="text-[11px] text-ink-muted">
+        <span class="text-[11px] text-ink-muted whitespace-nowrap">
           <span class="text-ink font-semibold">{{ pixiv.selectedIds.value.length }}</span> 件選択中
         </span>
-        <div class="h-4 w-px bg-canvas-border" />
+        <div class="h-4 w-px bg-canvas-border hidden sm:block" />
         <button
           type="button"
-          class="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-pixiv text-white hover:bg-pixiv-hover transition-colors disabled:opacity-50 flex items-center gap-1"
+          class="px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-pixiv text-white hover:bg-pixiv-hover transition-colors disabled:opacity-50 flex items-center gap-1 whitespace-nowrap"
           :disabled="isStashing || pixiv.isImporting.value"
           @click="stashSelected"
         >
@@ -747,7 +804,7 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
         </button>
         <button
           type="button"
-          class="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-brand text-brand-fg hover:bg-brand-hover transition-colors disabled:opacity-50 flex items-center gap-1"
+          class="px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-brand text-brand-fg hover:bg-brand-hover transition-colors disabled:opacity-50 flex items-center gap-1 whitespace-nowrap"
           :disabled="pixiv.isImporting.value"
           @click="placeSelectedOnCanvas"
         >
@@ -761,17 +818,21 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
     <Teleport to="body">
       <div
         v-if="activeArtwork"
-        class="fixed inset-0 z-[65] flex items-center justify-center p-4 md:p-6 scrim animate-fade-in"
+        class="fixed inset-0 z-[65] flex items-end sm:items-center justify-center p-2 sm:p-4 md:p-6 scrim animate-fade-in"
         @click.self="closeDetail"
       >
         <div
-          class="w-full max-w-5xl max-h-[90vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col md:flex-row overflow-hidden animate-scale-in"
+          class="w-full max-w-5xl max-h-[92dvh] sm:max-h-[90vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col md:flex-row overflow-hidden animate-scale-in"
           role="dialog"
           aria-modal="true"
           :aria-label="activeArtwork.title"
         >
           <!-- 画像 -->
-          <div class="flex-1 bg-canvas-sunken relative flex items-center justify-center p-4 min-h-[320px]">
+          <div
+            class="flex-1 bg-canvas-sunken relative flex items-center justify-center p-3 sm:p-4 min-h-[200px] max-h-[44dvh] md:max-h-none md:min-h-[320px] shrink-0 md:shrink"
+            @touchstart.passive="onDetailTouchStart"
+            @touchend.passive="onDetailTouchEnd"
+          >
             <PixivImage
               v-if="activePageImage"
               :src="activePageImage.image_url"
@@ -779,6 +840,16 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
               class="max-w-full max-h-full object-contain rounded-lg"
             />
             <div v-else class="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
+
+            <!-- モバイル用フローティング閉じるボタン -->
+            <button
+              type="button"
+              class="md:hidden absolute top-2.5 right-2.5 z-20 p-1.5 rounded-full bg-canvas-panel/90 text-ink border border-canvas-border shadow-sm"
+              aria-label="閉じる"
+              @click="closeDetail"
+            >
+              <X class="w-4 h-4" />
+            </button>
 
             <span
               v-if="currentPageImages.length > 1"
@@ -812,7 +883,7 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
 
           <!-- 情報 -->
           <div
-            class="w-full md:w-96 border-t md:border-t-0 md:border-l border-canvas-border p-4 flex flex-col gap-4 overflow-y-auto"
+            class="w-full md:w-96 flex-1 min-h-0 border-t md:border-t-0 md:border-l border-canvas-border p-3.5 sm:p-4 flex flex-col gap-3 sm:gap-4 overflow-y-auto"
           >
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
@@ -925,6 +996,145 @@ onUnmounted(() => window.removeEventListener('reflens:auth-changed', onAuthChang
         </div>
       </div>
     </Teleport>
+    <!-- カテゴリ・検索フィルタ・Pixiv連携モーダル（モバイルでも押しやすいメイン内モーダル） -->
+    <Teleport to="body">
+      <div
+        v-if="isFilterModalOpen"
+        class="fixed inset-0 z-[65] flex items-end sm:items-center justify-center p-2 sm:p-4 scrim animate-fade-in"
+        @click.self="isFilterModalOpen = false"
+      >
+        <div
+          class="w-full max-w-md max-h-[88dvh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col overflow-hidden animate-scale-in"
+          role="dialog"
+          aria-modal="true"
+          aria-label="pixiv 絞り込み・連携設定"
+        >
+          <div class="px-4 py-3 border-b border-canvas-border flex items-center justify-between">
+            <h2 class="text-sm font-bold text-ink flex items-center gap-2">
+              <SlidersHorizontal class="w-4 h-4 text-pixiv" />
+              <span>pixiv 絞り込み・連携設定</span>
+            </h2>
+            <button
+              type="button"
+              class="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
+              aria-label="閉じる"
+              @click="isFilterModalOpen = false"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+
+          <div class="p-4 space-y-5 overflow-y-auto">
+            <!-- カテゴリ選択 -->
+            <div class="space-y-2">
+              <p class="text-xs font-bold text-ink">フィード切替</p>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  v-for="cat in CATEGORIES"
+                  :key="cat.id"
+                  type="button"
+                  class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs transition-colors border text-left disabled:opacity-40"
+                  :class="activeCategory === cat.id
+                    ? 'bg-brand-soft border-brand text-brand font-bold'
+                    : 'bg-canvas-bg border-canvas-border-strong text-ink font-medium hover:bg-canvas-hover'"
+                  :disabled="isCategoryDisabled(cat)"
+                  @click="pickCategory(cat.id); isFilterModalOpen = false"
+                >
+                  <component :is="cat.icon" class="w-4 h-4 shrink-0" :class="activeCategory === cat.id ? 'text-brand' : 'text-ink-muted'" />
+                  <span class="truncate">{{ cat.label }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 検索ソート・期間フィルタ -->
+            <div class="pt-3 border-t border-canvas-border space-y-3">
+              <p class="text-xs font-bold text-ink">検索結果の並び順・期間</p>
+
+              <div class="space-y-1.5">
+                <p class="text-[11px] font-medium text-ink-muted">並び順</p>
+                <div class="grid grid-cols-3 gap-1.5">
+                  <button
+                    v-for="opt in SORT_OPTIONS"
+                    :key="opt.id"
+                    type="button"
+                    class="py-2 px-2 rounded-xl text-xs border transition-colors text-center"
+                    :class="sortMode === opt.id
+                      ? 'bg-pixiv text-white border-pixiv font-bold'
+                      : 'bg-canvas-bg text-ink border-canvas-border-strong font-medium hover:bg-canvas-hover'"
+                    @click="sortMode = opt.id; applyFilters(); isFilterModalOpen = false"
+                  >
+                    {{ opt.label }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="space-y-1.5">
+                <p class="text-[11px] font-medium text-ink-muted">投稿期間</p>
+                <div class="grid grid-cols-2 gap-1.5">
+                  <button
+                    v-for="opt in DURATION_OPTIONS"
+                    :key="opt.id"
+                    type="button"
+                    class="py-2 px-2.5 rounded-xl text-xs border transition-colors text-center"
+                    :class="durationMode === opt.id
+                      ? 'bg-pixiv text-white border-pixiv font-bold'
+                      : 'bg-canvas-bg text-ink border-canvas-border-strong font-medium hover:bg-canvas-hover'"
+                    @click="durationMode = opt.id; applyFilters(); isFilterModalOpen = false"
+                  >
+                    {{ opt.label }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pixivアカウント連携状態 -->
+            <div class="pt-3 border-t border-canvas-border space-y-2">
+              <p class="text-xs font-bold text-ink">Pixiv アカウント連携</p>
+
+              <div v-if="pixiv.isConnected.value" class="p-3 rounded-xl bg-canvas-bg border border-canvas-border-strong flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <PixivImage
+                    v-if="pixiv.status.value?.account?.avatar_url"
+                    :src="pixiv.proxyImage(pixiv.status.value.account.avatar_url)"
+                    :alt="pixiv.accountName.value"
+                    class="w-8 h-8 rounded-full shrink-0"
+                  />
+                  <div class="min-w-0">
+                    <p class="text-xs font-bold text-ink truncate">{{ pixiv.accountName.value }}</p>
+                    <p v-if="pixiv.status.value?.account?.account" class="text-[11px] text-ink-muted truncate">
+                      @{{ pixiv.status.value.account.account }}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-danger-soft text-danger hover:opacity-90 transition-opacity shrink-0 flex items-center gap-1"
+                  @click="pixiv.disconnect(); isFilterModalOpen = false"
+                >
+                  <LogOut class="w-3.5 h-3.5" />
+                  解除
+                </button>
+              </div>
+
+              <div v-else class="p-3 rounded-xl bg-canvas-bg border border-canvas-border-strong space-y-2.5">
+                <p class="text-xs text-ink-muted leading-relaxed">
+                  {{ pixiv.statusMessage.value || 'Pixivアカウントを接続するとフォロー新着や公開ブックマークを取得できます。' }}
+                </p>
+                <button
+                  v-if="pixiv.canConnect.value"
+                  type="button"
+                  class="w-full py-2.5 rounded-xl bg-pixiv text-white text-xs font-bold hover:bg-pixiv-hover transition-colors"
+                  @click="pixiv.connect()"
+                >
+                  Pixivに接続する
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <QuickLookModal />
   </div>
 </template>

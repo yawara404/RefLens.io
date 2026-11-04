@@ -1,22 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import {
-  FlipHorizontal,
-  FlipVertical,
-  SunMoon,
-  Trash2,
   Lock,
-  Unlock,
   Sparkles,
-  ChevronUp,
-  ChevronDown,
-  RotateCw,
   ExternalLink,
   Instagram,
   Globe,
 } from 'lucide-vue-next'
 import type { CanvasItem } from '~/types'
-import { useBoardStore } from '~/stores/boardStore'
 import { useMediaUrl } from '~/composables/useMediaUrl'
 
 const props = defineProps<{
@@ -33,9 +24,9 @@ const emit = defineEmits<{
   (e: 'start-rotate', evt: PointerEvent, item: CanvasItem): void
   (e: 'open-insight', item: CanvasItem): void
   (e: 'context-menu', evt: MouseEvent, item: CanvasItem): void
+  (e: 'focus-item', item: CanvasItem): void
 }>()
 
-const boardStore = useBoardStore()
 const { resolveMediaUrl } = useMediaUrl()
 
 const isHovered = ref(false)
@@ -58,12 +49,32 @@ const imageStyle = computed(() => ({
     : 'none',
 }))
 
-/** ズームが低いときはハンドルやツールバーを隠して{item}の妨げにしない */
-const isDetailed = computed(() => props.zoom >= 0.28)
+/** ズームが低いときはハンドルを隠して視認性の妨げにしない */
+const isDetailed = computed(() => props.zoom >= 0.25)
 
 function onPointerDown(evt: PointerEvent) {
   if (evt.button === 2) return // 右クリックは contextmenu で処理
   if (evt.button !== 0) return
+
+  if (evt.pointerType === 'touch') {
+    const now = Date.now()
+    if (now - lastTapAt < 320) {
+      clearLongPress()
+      lastTapAt = 0
+      emit('focus-item', props.item)
+      return
+    }
+    lastTapAt = now
+    touchStartPos = { x: evt.clientX, y: evt.clientY }
+    clearLongPress()
+    longPressTimer = setTimeout(() => {
+      emit('context-menu', { clientX: touchStartPos.x, clientY: touchStartPos.y, preventDefault: () => {} } as unknown as MouseEvent, props.item)
+    }, 480)
+  }
+
+  if (evt.pointerType !== 'touch') {
+    evt.preventDefault()
+  }
 
   emit('select', evt as unknown as MouseEvent)
   if (!props.item.is_locked) {
@@ -71,11 +82,28 @@ function onPointerDown(evt: PointerEvent) {
   }
 }
 
-function onContextMenu(evt: MouseEvent) {
-  if (!props.item.is_locked) {
-    // ロック中はメニューを出さない（誤操作防止）
-    emit('context-menu', evt, props.item)
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let touchStartPos = { x: 0, y: 0 }
+let lastTapAt = 0
+
+function clearLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
   }
+}
+
+function onPointerMove(evt: PointerEvent) {
+  if (!longPressTimer) return
+  if (Math.hypot(evt.clientX - touchStartPos.x, evt.clientY - touchStartPos.y) > 8) {
+    clearLongPress()
+  }
+}
+
+onBeforeUnmount(clearLongPress)
+
+function onContextMenu(evt: MouseEvent) {
+  emit('context-menu', evt, props.item)
 }
 
 const sourceBadgeClass = computed(() => {
@@ -93,6 +121,9 @@ const sourceBadgeClass = computed(() => {
 <template>
   <div
     class="absolute top-0 left-0 group no-context-menu"
+    tabindex="0"
+    role="group"
+    :aria-label="item.caption || item.media?.title || item.media?.original_file_name || 'キャンバス上の資料'"
     :class="[
       item.is_locked ? 'cursor-default' : 'cursor-move',
       isSelected ? 'ring-2 ring-brand shadow-canvas-item' : 'shadow-canvas-item hover:ring-1 hover:ring-canvas-border-strong',
@@ -100,7 +131,13 @@ const sourceBadgeClass = computed(() => {
     ]"
     :style="itemStyle"
     @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="clearLongPress"
+    @pointercancel="clearLongPress"
+    @dblclick.stop="emit('focus-item', item)"
     @contextmenu="onContextMenu"
+    @focus.self="emit('select', { shiftKey: false, metaKey: false, ctrlKey: false } as MouseEvent)"
+    @keydown.enter.self.prevent="emit('open-insight', item)"
     @pointerenter="isHovered = true"
     @pointerleave="isHovered = false"
   >
@@ -126,7 +163,7 @@ const sourceBadgeClass = computed(() => {
       <!-- ロック表示 -->
       <div
         v-if="item.is_locked"
-        class="absolute top-2 right-2 p-1 rounded bg-canvas-raised/90 text-warn"
+        class="absolute top-2 right-2 p-1 rounded bg-canvas-raised/90 text-warn shadow-sm"
       >
         <Lock class="w-3.5 h-3.5" />
       </div>
@@ -163,139 +200,34 @@ const sourceBadgeClass = computed(() => {
       </div>
     </div>
 
-    <!-- 選択時の浮动ツールバー -->
-    <div
-      v-if="isSelected && isDetailed"
-      class="absolute -top-10 left-1/2 -translate-x-1/2 floating-bar px-1 py-1 rounded-lg flex items-center gap-0.5 z-30"
-      @pointerdown.stop
-    >
-      <button
-        type="button"
-        class="p-1.5 rounded text-ink-muted hover:text-brand hover:bg-brand-soft transition-colors flex items-center gap-1 text-xs px-1.5"
-        title="AI 解析を開く"
-        @click.stop="emit('open-insight', item)"
-      >
-        <Sparkles class="w-3.5 h-3.5" />
-        <span class="text-[11px] font-medium hidden sm:inline">AI</span>
-      </button>
-
-      <div class="h-3 w-px bg-canvas-border mx-0.5" />
-
-      <button
-        type="button"
-        class="p-1.5 rounded hover:bg-canvas-hover transition-colors"
-        :class="item.is_flipped_h ? 'text-brand bg-brand-soft' : 'text-ink-muted hover:text-ink'"
-        title="左右反転 [H]"
-        aria-label="左右反転"
-        @click.stop="boardStore.flipHorizontal(item.id)"
-      >
-        <FlipHorizontal class="w-3.5 h-3.5" />
-      </button>
-
-      <button
-        type="button"
-        class="p-1.5 rounded hover:bg-canvas-hover transition-colors"
-        :class="item.is_flipped_v ? 'text-brand bg-brand-soft' : 'text-ink-muted hover:text-ink'"
-        title="上下反転 [V]"
-        aria-label="上下反転"
-        @click.stop="boardStore.flipVertical(item.id)"
-      >
-        <FlipVertical class="w-3.5 h-3.5" />
-      </button>
-
-      <button
-        type="button"
-        class="p-1.5 rounded hover:bg-canvas-hover transition-colors"
-        :class="item.is_grayscale ? 'text-brand bg-brand-soft' : 'text-ink-muted hover:text-ink'"
-        title="グレースケール [G]"
-        aria-label="グレースケール切り替え"
-        @click.stop="boardStore.toggleGrayscale(item.id)"
-      >
-        <SunMoon class="w-3.5 h-3.5" />
-      </button>
-
-      <div class="h-3 w-px bg-canvas-border mx-0.5" />
-
-      <button
-        type="button"
-        class="p-1.5 rounded text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
-        title="90°回転 [R]"
-        aria-label="90度回転"
-        @click.stop="boardStore.updateItem(item.id, { rotation: (item.rotation + 90) % 360 })"
-      >
-        <RotateCw class="w-3.5 h-3.5" />
-      </button>
-
-      <button
-        type="button"
-        class="p-1.5 rounded text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
-        title="前面へ"
-        aria-label="前面へ移動"
-        @click.stop="boardStore.bringToFront(item.id)"
-      >
-        <ChevronUp class="w-3.5 h-3.5" />
-      </button>
-
-      <button
-        type="button"
-        class="p-1.5 rounded text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
-        title="背面へ"
-        aria-label="背面へ移動"
-        @click.stop="boardStore.sendToBack(item.id)"
-      >
-        <ChevronDown class="w-3.5 h-3.5" />
-      </button>
-
-      <button
-        type="button"
-        class="p-1.5 rounded text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
-        :class="item.is_locked ? 'text-warn' : ''"
-        :title="item.is_locked ? 'ロック解除' : '位置とサイズを固定'"
-        :aria-label="item.is_locked ? 'ロック解除' : 'ロック'"
-        @click.stop="boardStore.updateItem(item.id, { is_locked: !item.is_locked })"
-      >
-        <component :is="item.is_locked ? Lock : Unlock" class="w-3.5 h-3.5" />
-      </button>
-
-      <button
-        type="button"
-        class="p-1.5 rounded text-danger hover:bg-danger-soft transition-colors"
-        title="削除 [Delete]"
-        aria-label="削除"
-        @click.stop="boardStore.deleteItem(item.id)"
-      >
-        <Trash2 class="w-3.5 h-3.5" />
-      </button>
-    </div>
-
-    <!-- 変形ハンドル（選択中かつ非ロック時） -->
+    <!-- 変形ハンドル（選択中かつ非ロック時・ツールバーと干渉しないよう上部に回転ハンドルのみ配置） -->
     <template v-if="isSelected && !item.is_locked && isDetailed">
       <!-- 回転ハンドル -->
       <div
-        class="absolute -top-7 left-1/2 -translate-x-1/2 z-20 cursor-grab"
-        title="回転（Shiftで15°スナップ）"
+        class="absolute -top-8 left-1/2 -translate-x-1/2 z-20 cursor-grab p-1"
+        title="ドラッグして回転（Shiftで15°スナップ）"
         @pointerdown.stop="emit('start-rotate', $event, item)"
       >
-        <div class="w-4 h-4 rounded-full bg-canvas-panel border-2 border-brand flex items-center justify-center shadow-canvas-item hover:scale-125 transition-transform">
-          <div class="w-1 h-1 rounded-full bg-brand" />
+        <div class="w-5 h-5 sm:w-4 sm:h-4 rounded-full bg-canvas-panel border-2 border-brand flex items-center justify-center shadow-canvas-item hover:scale-125 transition-transform">
+          <div class="w-1.5 h-1.5 sm:w-1 sm:h-1 rounded-full bg-brand" />
         </div>
       </div>
-      <div class="absolute -top-7 left-1/2 -translate-x-1/2 w-px h-4 bg-brand/50 pointer-events-none" />
+      <div class="absolute -top-4 left-1/2 -translate-x-1/2 w-0.5 h-4 bg-brand pointer-events-none" />
 
-      <!-- 四隅のリサイズハンドル（タッチ向けに少し大きめ） -->
+      <!-- 四隅のリサイズハンドル（タッチ向けに大きめ） -->
       <div
         v-for="dir in (['se', 'sw', 'ne', 'nw'] as const)"
         :key="dir"
-        class="absolute w-4 h-4 bg-canvas-panel border-2 border-brand rounded-sm shadow-canvas-item hover:scale-125 transition-transform z-20"
+        class="absolute w-5 h-5 sm:w-4 sm:h-4 bg-canvas-panel border-2 border-brand rounded-sm shadow-canvas-item hover:scale-125 transition-transform z-20"
         :class="{
           'cursor-se-resize': dir === 'se',
           'cursor-sw-resize': dir === 'sw',
           'cursor-ne-resize': dir === 'ne',
           'cursor-nw-resize': dir === 'nw',
-          '-bottom-2 -right-2': dir === 'se',
-          '-bottom-2 -left-2': dir === 'sw',
-          '-top-2 -right-2': dir === 'ne',
-          '-top-2 -left-2': dir === 'nw',
+          '-bottom-2.5 -right-2.5 sm:-bottom-2 sm:-right-2': dir === 'se',
+          '-bottom-2.5 -left-2.5 sm:-bottom-2 sm:-left-2': dir === 'sw',
+          '-top-2.5 -right-2.5 sm:-top-2 sm:-right-2': dir === 'ne',
+          '-top-2.5 -left-2.5 sm:-top-2 sm:-left-2': dir === 'nw',
         }"
         @pointerdown.stop="emit('start-resize', $event, item, dir)"
       />

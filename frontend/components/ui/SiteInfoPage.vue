@@ -8,7 +8,7 @@ defineProps<{ title: string; updated?: string; eyebrow?: string }>()
 <template>
   <div class="min-h-screen bg-canvas-bg text-ink flex flex-col">
     <AppHeader />
-    <main class="w-full max-w-3xl mx-auto flex-1 px-5 py-10 sm:py-14">
+    <main id="main-content" tabindex="-1" class="w-full max-w-3xl mx-auto flex-1 px-5 py-10 sm:py-14 focus:outline-none">
       <p class="text-[11px] font-mono uppercase tracking-widest text-brand">{{ eyebrow || 'RefLens.io / Site information' }}</p>
       <h1 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight">{{ title }}</h1>
       <p v-if="updated" class="mt-2 text-xs text-ink-subtle">更新日: {{ updated }}</p>

@@ -102,11 +102,11 @@ onMounted(() => {
   <Teleport to="body">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-[60] flex items-center justify-center p-4 scrim animate-fade-in"
+      class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-2 sm:p-4 scrim animate-fade-in"
       @click.self="emit('close')"
     >
       <div
-        class="w-full max-w-3xl max-h-[85vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col overflow-hidden animate-scale-in"
+        class="w-full max-w-3xl max-h-[90dvh] sm:max-h-[85vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
         aria-label="Instagramから取り込む"
@@ -188,7 +188,7 @@ onMounted(() => {
                   class="absolute top-2 right-2 w-5 h-5 rounded-full border flex items-center justify-center transition-all"
                   :class="selectedMediaIds.includes(post.id)
                     ? 'bg-instagram border-instagram'
-                    : 'bg-canvas-panel/85 border-canvas-border-strong opacity-0 group-hover:opacity-100'"
+                    : 'bg-canvas-panel/85 border-canvas-border-strong opacity-100 sm:opacity-0 sm:group-hover:opacity-100'"
                 >
                   <Check v-if="selectedMediaIds.includes(post.id)" class="w-3 h-3 text-white stroke-[3]" />
                 </span>
@@ -205,7 +205,7 @@ onMounted(() => {
         </div>
 
         <!-- フッター -->
-        <div class="p-3 border-t border-canvas-border flex items-center justify-between gap-3 shrink-0">
+        <div class="p-3 border-t border-canvas-border flex flex-wrap items-center justify-between gap-2 shrink-0">
           <button
             type="button"
             class="flex items-center gap-1.5 text-[11px] text-ink-subtle hover:text-instagram transition-colors"

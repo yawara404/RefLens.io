@@ -19,12 +19,12 @@
     --surface-sunken: #e7e9ee;
     --surface-hover: #eef0f4;
 
-    --border-subtle: #dfe2e8;
-    --border-strong: #c4c9d3;
+    --border-subtle: #d8dce3;
+    --border-strong: #b8bfcc;
 
-    --text-primary: #171a1f;
-    --text-muted: #5b6270;
-    --text-subtle: #6b7280;
+    --text-primary: #111418;
+    --text-muted: #4b5260;
+    --text-subtle: #5e6675;
     --text-inverted: #ffffff;
 
     /* アクセント: フラットなインディゴ1色 */
@@ -66,12 +66,12 @@
     --surface-sunken: #0a0c10;
     --surface-hover: #252a35;
 
-    --border-subtle: #2a2f3a;
-    --border-strong: #3d4452;
+    --border-subtle: #2d3340;
+    --border-strong: #454e60;
 
-    --text-primary: #e8eaed;
-    --text-muted: #a8aebe;
-    --text-subtle: #8b93a2;
+    --text-primary: #f1f3f6;
+    --text-muted: #b4bac8;
+    --text-subtle: #949cae;
     --text-inverted: #0f1116;
 
     /* ダークでは明るいインディゴにして面とのコントラストを確保する */
@@ -100,6 +100,22 @@
     --canvas-dot: rgba(232, 234, 237, 0.12);
     --canvas-line: rgba(232, 234, 237, 0.05);
     --canvas-surface: #0b0d12;
+  }
+
+  .dark .text-pixiv {
+    color: #55c0ff;
+  }
+
+  .dark .hover\:text-pixiv:hover {
+    color: #7ccfff;
+  }
+
+  .dark .text-instagram {
+    color: #ff76a8;
+  }
+
+  .dark .hover\:text-instagram:hover {
+    color: #ff98ba;
   }
 
   html {
@@ -167,7 +183,7 @@
 /* キャンバス上に浮くツールバー/ピル */
 .floating-bar {
   background-color: var(--surface-panel);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-pop);
 }
 
@@ -180,8 +196,15 @@
    スクロールバー
    ========================================================= */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
+}
+
+@media (max-width: 640px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
 }
 
 ::-webkit-scrollbar-track {
@@ -200,6 +223,28 @@
   background-clip: content-box;
 }
 
+/* モバイルのセーフエリア（ノッチ・ホームバー）対応 */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.bottom-safe {
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+.h-app-screen {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.pb-safe-main {
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+}
+
+.pb-safe-drawer {
+  padding-bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px));
+}
+
 /* 横スクロールバーを非表示（カテゴリピル等） */
 .no-scrollbar {
   scrollbar-width: none;
@@ -211,8 +256,14 @@
 }
 
 /* =========================================================
-   ユーティリティ
+   ユーティリティ & コンテンツ保護（画像の無断コピー・ドラッグ持ち出し抑止）
    ========================================================= */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .no-drag-select {
   -webkit-user-drag: none;
   user-select: none;
@@ -237,6 +288,28 @@
 .focus-ring-only:focus-visible {
   outline: 2px solid var(--accent-default);
   outline-offset: 2px;
+}
+
+/* スキップリンク（キーボードTab時に画面左上に表示） */
+.skip-link {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 100;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.5rem;
+  background-color: var(--accent-default);
+  color: var(--accent-fg);
+  font-size: 0.75rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-pop);
+  transform: translateY(-200%);
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
 }
 
 @media (prefers-reduced-motion: reduce) {

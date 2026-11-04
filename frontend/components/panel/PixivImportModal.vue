@@ -122,11 +122,11 @@ onMounted(() => {
   <Teleport to="body">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-[60] flex items-center justify-center p-4 scrim animate-fade-in"
+      class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-2 sm:p-4 scrim animate-fade-in"
       @click.self="emit('close')"
     >
       <div
-        class="w-full max-w-5xl max-h-[85vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col overflow-hidden animate-scale-in"
+        class="w-full max-w-5xl max-h-[90dvh] sm:max-h-[85vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
         aria-label="pixivから取り込む"
@@ -275,7 +275,7 @@ onMounted(() => {
                   class="absolute top-2 right-2 w-5 h-5 rounded-full border flex items-center justify-center transition-colors"
                   :class="pixiv.isSelected(item.id)
                     ? 'bg-pixiv border-pixiv'
-                    : 'bg-canvas-panel/80 border-canvas-border-strong opacity-0 group-hover:opacity-100'"
+                    : 'bg-canvas-panel/80 border-canvas-border-strong opacity-100 sm:opacity-0 sm:group-hover:opacity-100'"
                 >
                   <Check v-if="pixiv.isSelected(item.id)" class="w-3 h-3 text-white stroke-[3]" />
                 </span>
@@ -319,8 +319,8 @@ onMounted(() => {
         </div>
 
         <!-- フッター -->
-        <div class="p-3 border-t border-canvas-border flex items-center justify-between gap-3 shrink-0">
-          <div class="flex items-center gap-3">
+        <div class="p-3 border-t border-canvas-border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
+          <div class="flex items-center justify-between sm:justify-start gap-3">
             <button
               type="button"
               class="text-[11px] text-ink-subtle hover:text-ink transition-colors disabled:opacity-40"
@@ -336,8 +336,8 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="flex items-center gap-2">
-            <span class="text-[11px] text-ink-muted">
+          <div class="flex items-center justify-end gap-2">
+            <span class="text-[11px] text-ink-muted mr-auto sm:mr-0">
               <span class="text-ink font-semibold">{{ pixiv.selectedIds.value.length }}</span> 件選択中
             </span>
             <button

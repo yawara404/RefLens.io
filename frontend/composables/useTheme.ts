@@ -14,9 +14,9 @@ export const themeInitScript = `(function(){try{
 var p=null;try{p=localStorage.getItem('${STORAGE_KEY}')}catch(_){}
 if(p!=='light'&&p!=='dark'&&p!=='auto'){
   var m=document.cookie.match(/(?:^|; )${COOKIE_KEY}=([^;]+)/);
-  p=m?decodeURIComponent(m[1]):'auto';
+  p=m?decodeURIComponent(m[1]):'light';
 }
-if(p!=='light'&&p!=='dark'&&p!=='auto')p='auto';
+if(p!=='light'&&p!=='dark'&&p!=='auto')p='light';
 var d=p==='dark'||(p==='auto'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
 var e=document.documentElement;
 e.classList.toggle('dark',d);
@@ -30,13 +30,13 @@ interface ThemeState {
 }
 
 const state = reactive<ThemeState>({
-  preference: 'auto',
+  preference: 'light',
   systemPrefersDark: false,
   initialized: false,
 })
 
 function readStoredPreference(): ThemePreference {
-  if (typeof window === 'undefined') return 'auto'
+  if (typeof window === 'undefined') return 'light'
 
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY)
@@ -49,7 +49,7 @@ function readStoredPreference(): ThemePreference {
   const fromCookie = match ? decodeURIComponent(match[1]) : null
   return fromCookie === 'light' || fromCookie === 'dark' || fromCookie === 'auto'
     ? (fromCookie as ThemePreference)
-    : 'auto'
+    : 'light'
 }
 
 function persist(pref: ThemePreference) {

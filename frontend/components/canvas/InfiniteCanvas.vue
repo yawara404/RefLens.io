@@ -1,5 +1,22 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import {
+  Bookmark,
+  Compass,
+  Sparkles,
+  FlipHorizontal,
+  FlipVertical,
+  SunMoon,
+  RotateCw,
+  ChevronUp,
+  ChevronDown,
+  Lock,
+  Unlock,
+  MoreHorizontal,
+  Trash2,
+  Maximize2,
+  X,
+} from 'lucide-vue-next'
 import type { CanvasItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
 import { useHelpStore } from '~/stores/helpStore'
@@ -16,6 +33,7 @@ const props = defineProps<{ boardId: string }>()
 
 const emit = defineEmits<{
   (e: 'open-insight', item: CanvasItem | null): void
+  (e: 'open-pixiv'): void
 }>()
 
 const boardStore = useBoardStore()
@@ -75,9 +93,18 @@ const wheelMode = ref<'scroll' | 'zoom'>(
   typeof window !== 'undefined' && 'ontouchstart' in window ? 'zoom' : 'scroll'
 )
 
-// 自動保存
+// 自動保存 & ビューポート中央座標の同期
+function syncViewportCenter() {
+  if (!containerRef.value) return
+  const rect = containerRef.value.getBoundingClientRect()
+  if (rect.width === 0 || rect.height === 0) return
+  const centerWorld = screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2, rect)
+  boardStore.setViewportCenter(centerWorld.x, centerWorld.y)
+}
+
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 function triggerAutoSave() {
+  syncViewportCenter()
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   autoSaveTimer = setTimeout(() => {
     boardStore.saveCanvas(panX.value, panY.value, zoom.value)
@@ -171,20 +198,37 @@ function onPointerDown(e: PointerEvent) {
 function onPointerMove(e: PointerEvent) {
   if (!containerRef.value) return
 
+  // マウスボタンが既に離されている（ウィンドウ外で離した等）場合は即座にドラッグ状態を終了する
+  if (
+    e.pointerType === 'mouse'
+    && e.buttons === 0
+    && (isPanning.value || draggingItem.value || resizingItem.value || rotatingItem.value || isSelectingBox.value)
+  ) {
+    onPointerUp(e)
+    return
+  }
+
   if (pointers.has(e.pointerId)) {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
   }
 
-  // --- ピンチズーム ---
-  if (isTouchGesture && pointers.size === 2) {
+  // --- ピンチズーム + 2本指パン ---
+  if (isTouchGesture.value && pointers.size === 2) {
     const [a, b] = [...pointers.values()]
+    const midX = (a.x + b.x) / 2
+    const midY = (a.y + b.y) / 2
     const dist = Math.hypot(b.x - a.x, b.y - a.y)
+    const rect = containerRef.value.getBoundingClientRect()
+
+    // 2本指の中点の移動量でパン
+    panBy(midX - pinchAnchor.x, midY - pinchAnchor.y)
+    pinchAnchor = { x: midX, y: midY }
+
     if (pinchStartDist > 0) {
-      const rect = containerRef.value.getBoundingClientRect()
       const target = Math.max(0.05, Math.min(5, pinchStartZoom * (dist / pinchStartDist)))
-      zoomAt(pinchAnchor.x, pinchAnchor.y, rect, target / zoom.value)
-      triggerAutoSave()
+      zoomAt(midX, midY, rect, target / zoom.value)
     }
+    triggerAutoSave()
     return
   }
 
@@ -283,28 +327,40 @@ function onPointerMove(e: PointerEvent) {
   }
 }
 
-function onPointerUp(e: PointerEvent) {
-  pointers.delete(e.pointerId)
+function onPointerUp(e?: PointerEvent) {
+  if (e) {
+    pointers.delete(e.pointerId)
+  } else {
+    pointers.clear()
+  }
 
   if (pointers.size < 2) {
     isTouchGesture.value = false
     pinchStartDist = 0
   }
 
-  if (isPanning.value) {
-    isPanning.value = false
-    triggerAutoSave()
-  }
+  const wasPanning = isPanning.value
+  const wasTransformingItem = Boolean(draggingItem.value || resizingItem.value || rotatingItem.value)
 
-  if (draggingItem.value || resizingItem.value || rotatingItem.value) {
-    boardStore.recordHistory()
-    triggerAutoSave()
-  }
-
+  // 状態解除を最優先で実行し、例外時でも「持ったまま離せない」状態にならないようにする
+  isPanning.value = false
   draggingItem.value = null
   resizingItem.value = null
   rotatingItem.value = null
   isSelectingBox.value = false
+
+  if (wasTransformingItem) {
+    boardStore.recordHistory()
+  }
+
+  if (wasPanning || wasTransformingItem) {
+    triggerAutoSave()
+  }
+}
+
+function onWindowBlur() {
+  isSpacePressed.value = false
+  onPointerUp()
 }
 
 // ---------------------------------------------------------------
@@ -398,30 +454,93 @@ function onKeyDown(e: KeyboardEvent) {
       case '0':
         e.preventDefault()
         if (containerRef.value) resetView(containerRef.value.getBoundingClientRect())
+        triggerAutoSave()
         return
+      case '=':
+      case '+':
+        e.preventDefault()
+        stepZoom(1.2)
+        return
+      case '-':
+        e.preventDefault()
+        stepZoom(1 / 1.2)
+        return
+    }
+    return
+  }
+
+  // 矢印キー: 選択アイテムの微調整移動（Shiftで10px）、未選択時はキャンバスのパン
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+    e.preventDefault()
+    const movable = boardStore.selectedItems.filter(it => !it.is_locked)
+    if (movable.length > 0) {
+      const step = e.shiftKey ? 10 : 1
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+      for (const item of movable) {
+        boardStore.updateItem(item.id, {
+          pos_x: item.pos_x + dx,
+          pos_y: item.pos_y + dy,
+        }, false)
+      }
+      boardStore.recordHistory()
+      triggerAutoSave()
+    } else {
+      const panStep = e.shiftKey ? 120 : 40
+      const dx = e.key === 'ArrowLeft' ? panStep : e.key === 'ArrowRight' ? -panStep : 0
+      const dy = e.key === 'ArrowUp' ? panStep : e.key === 'ArrowDown' ? -panStep : 0
+      panBy(dx, dy)
+      triggerAutoSave()
     }
     return
   }
 
   // 単独キー
   switch (e.key) {
+    case '+':
+    case '=':
+      e.preventDefault()
+      stepZoom(1.2)
+      break
+    case '-':
+      e.preventDefault()
+      stepZoom(1 / 1.2)
+      break
+    case '[':
+      if (boardStore.selectedItemIds.length) {
+        e.preventDefault()
+        boardStore.sendToBack()
+        triggerAutoSave()
+      }
+      break
+    case ']':
+      if (boardStore.selectedItemIds.length) {
+        e.preventDefault()
+        boardStore.bringToFront()
+        triggerAutoSave()
+      }
+      break
     case 'h': case 'H':
       e.preventDefault()
       boardStore.flipHorizontal()
+      triggerAutoSave()
       break
     case 'v': case 'V':
       e.preventDefault()
       boardStore.flipVertical()
+      triggerAutoSave()
       break
     case 'g': case 'G':
       e.preventDefault()
       boardStore.toggleGrayscale()
+      triggerAutoSave()
       break
     case 'r': case 'R':
       e.preventDefault()
       for (const item of boardStore.selectedItems) {
         boardStore.updateItem(item.id, { rotation: (item.rotation + 90) % 360 })
       }
+      triggerAutoSave()
       break
     case 'b': case 'B':
       e.preventDefault()
@@ -521,6 +640,25 @@ function handleContextMenu(evt: MouseEvent, item: CanvasItem) {
   menuState.value = { item, x: evt.clientX, y: evt.clientY }
 }
 
+function openActiveItemMenu(evt: MouseEvent) {
+  const item = boardStore.activeItem || boardStore.selectedItems[0]
+  if (!item) return
+  const target = evt.currentTarget as HTMLElement | null
+  const rect = target?.getBoundingClientRect()
+  const x = rect ? rect.left : evt.clientX
+  const y = rect ? rect.bottom + 8 : evt.clientY
+  menuState.value = { item, x, y }
+}
+
+function toggleLockSelected() {
+  const allLocked = boardStore.selectedItems.every(it => it.is_locked)
+  for (const item of boardStore.selectedItems) {
+    boardStore.updateItem(item.id, { is_locked: !allLocked }, false)
+  }
+  boardStore.recordHistory()
+  triggerAutoSave()
+}
+
 // ---------------------------------------------------------------
 // Computed
 // ---------------------------------------------------------------
@@ -548,10 +686,31 @@ const backgroundClass = computed(() => {
 function fitView() {
   if (containerRef.value) {
     fitToItems(boardStore.items, containerRef.value.getBoundingClientRect())
+    triggerAutoSave()
   }
 }
 
-defineExpose({ fitView, resetView })
+function focusItem(item: CanvasItem) {
+  if (!containerRef.value) return
+  boardStore.selectItem(item.id)
+  fitToItems([item], containerRef.value.getBoundingClientRect(), 96)
+  triggerAutoSave()
+}
+
+function stepZoom(factor: number) {
+  if (!containerRef.value) return
+  const rect = containerRef.value.getBoundingClientRect()
+  zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, rect, factor)
+  triggerAutoSave()
+}
+
+function handleResetZoom() {
+  if (!containerRef.value) return
+  resetView(containerRef.value.getBoundingClientRect())
+  triggerAutoSave()
+}
+
+defineExpose({ fitView, resetView, focusItem })
 
 // ---------------------------------------------------------------
 // Lifecycle
@@ -567,10 +726,12 @@ onMounted(() => {
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
+  window.addEventListener('blur', onWindowBlur)
 
   // 初期ロード後に自動で全体表示
   initialFitTimer = setTimeout(() => {
     if (boardStore.items.length) fitView()
+    else syncViewportCenter()
   }, 350)
 })
 
@@ -581,6 +742,7 @@ onUnmounted(() => {
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('pointercancel', onPointerUp)
+  window.removeEventListener('blur', onWindowBlur)
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   if (initialFitTimer) clearTimeout(initialFitTimer)
 })
@@ -627,6 +789,7 @@ watch(() => props.boardId, () => {
         @start-rotate="handleStartRotate"
         @open-insight="emit('open-insight', $event)"
         @context-menu="handleContextMenu"
+        @focus-item="focusItem"
       />
 
       <!-- 矩形選択のラバーバンド -->
@@ -643,49 +806,246 @@ watch(() => props.boardId, () => {
       :x="menuState?.x || 0"
       :y="menuState?.y || 0"
       @close="menuState = null"
+      @changed="triggerAutoSave"
+      @focus-item="(it) => { focusItem(it); menuState = null }"
       @open-insight="() => {
         if (menuState) emit('open-insight', menuState.item)
         menuState = null
       }"
     />
 
-    <!-- 空の状態 -->
+    <!-- 選択中アイテムの固定操作バー（回転やズームに影響されず常に押しやすい画面上部バー） -->
     <div
-      v-if="!boardStore.items.length"
-      class="absolute inset-0 flex items-center justify-center pointer-events-none p-8"
+      v-if="boardStore.selectedItems.length > 0"
+      class="absolute top-14 md:top-3 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-1rem)] z-20 pointer-events-auto overflow-x-auto no-scrollbar animate-fade-in whitespace-nowrap"
+      @pointerdown.stop
     >
-      <div class="text-center max-w-sm">
-        <p class="text-sm font-semibold text-ink">キャンバスが空です</p>
-        <p class="text-xs text-ink-muted mt-2 leading-relaxed">
-          画像をドラッグ＆ドロップ、または貼り付け（⌘V）で追加できます。<br>
-          下部のツールバーからpixiv・Instagram取り込みも 가능합니다。
-        </p>
+      <div class="floating-bar px-2 py-1.5 rounded-2xl flex items-center gap-1 shadow-pop whitespace-nowrap">
+        <span class="px-2 py-0.5 text-[11px] font-bold text-ink truncate max-w-[110px] sm:max-w-[160px] shrink-0">
+          {{ boardStore.selectedItems.length === 1
+            ? (boardStore.activeItem?.caption || boardStore.activeItem?.media?.title || '選択中の資料')
+            : `${boardStore.selectedItems.length}件を選択中` }}
+        </span>
+
+        <div class="h-4 w-px bg-canvas-border mx-0.5 shrink-0" />
+
+        <button
+          v-if="boardStore.activeItem"
+          type="button"
+          class="px-2.5 py-1 rounded-xl text-xs font-bold text-brand bg-brand-soft hover:bg-brand hover:text-brand-fg transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap"
+          title="AI 解析を開く [I]"
+          @click="emit('open-insight', boardStore.activeItem)"
+        >
+          <Sparkles class="w-3.5 h-3.5 shrink-0" />
+          <span class="hidden sm:inline whitespace-nowrap">AI解析</span>
+        </button>
+
+        <button
+          v-if="boardStore.activeItem"
+          type="button"
+          class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+          title="この資料にズームフォーカス"
+          aria-label="この資料にズームフォーカス"
+          @click="focusItem(boardStore.activeItem)"
+        >
+          <Maximize2 class="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          type="button"
+          class="p-1.5 rounded-xl transition-colors shrink-0"
+          :class="boardStore.activeItem?.is_flipped_h ? 'text-brand bg-brand-soft' : 'text-ink-muted hover:text-ink hover:bg-canvas-hover'"
+          title="左右反転 [H]"
+          aria-label="左右反転"
+          @click="boardStore.flipHorizontal(); triggerAutoSave()"
+        >
+          <FlipHorizontal class="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          type="button"
+          class="p-1.5 rounded-xl transition-colors shrink-0"
+          :class="boardStore.activeItem?.is_flipped_v ? 'text-brand bg-brand-soft' : 'text-ink-muted hover:text-ink hover:bg-canvas-hover'"
+          title="上下反転 [V]"
+          aria-label="上下反転"
+          @click="boardStore.flipVertical(); triggerAutoSave()"
+        >
+          <FlipVertical class="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          type="button"
+          class="p-1.5 rounded-xl transition-colors shrink-0"
+          :class="boardStore.activeItem?.is_grayscale ? 'text-brand bg-brand-soft' : 'text-ink-muted hover:text-ink hover:bg-canvas-hover'"
+          title="グレースケール [G]"
+          aria-label="グレースケール"
+          @click="boardStore.toggleGrayscale(); triggerAutoSave()"
+        >
+          <SunMoon class="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          type="button"
+          class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+          title="90°回転 [R]"
+          aria-label="90度回転"
+          @click="boardStore.rotateSelection(90); triggerAutoSave()"
+        >
+          <RotateCw class="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          type="button"
+          class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+          title="前面へ移動"
+          aria-label="前面へ移動"
+          @click="boardStore.bringToFront(); triggerAutoSave()"
+        >
+          <ChevronUp class="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          type="button"
+          class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+          title="背面へ移動"
+          aria-label="背面へ移動"
+          @click="boardStore.sendToBack(); triggerAutoSave()"
+        >
+          <ChevronDown class="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          type="button"
+          class="p-1.5 rounded-xl transition-colors shrink-0"
+          :class="boardStore.selectedItems.every(i => i.is_locked) ? 'text-warn bg-warn/15' : 'text-ink-muted hover:text-ink hover:bg-canvas-hover'"
+          title="位置とサイズを固定 / 解除"
+          aria-label="ロック切替"
+          @click="toggleLockSelected"
+        >
+          <component :is="boardStore.selectedItems.every(i => i.is_locked) ? Lock : Unlock" class="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          v-if="boardStore.activeItem"
+          type="button"
+          class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+          title="メモ・不透明度・詳細メニュー"
+          aria-label="詳細メニュー"
+          @click="openActiveItemMenu"
+        >
+          <MoreHorizontal class="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          type="button"
+          class="p-1.5 rounded-xl text-danger hover:bg-danger-soft transition-colors shrink-0"
+          title="削除 [Delete]"
+          aria-label="削除"
+          @click="boardStore.deleteSelected()"
+        >
+          <Trash2 class="w-3.5 h-3.5" />
+        </button>
+
+        <div class="h-4 w-px bg-canvas-border mx-0.5 shrink-0" />
+
+        <button
+          type="button"
+          class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+          title="選択解除 [Esc]"
+          aria-label="選択解除"
+          @click="boardStore.clearSelection()"
+        >
+          <X class="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
 
-    <!-- 選択中アイテムのカラーチップバー -->
+    <!-- 空の状態（1クリックでブックマークブラウザやPixiv取り込みを開けるクイックスタート付き） -->
+    <div
+      v-if="!boardStore.items.length"
+      class="absolute inset-0 flex items-center justify-center pointer-events-none p-6"
+    >
+      <div class="pointer-events-auto text-center max-w-md p-6 rounded-2xl bg-canvas-panel/90 border border-canvas-border shadow-card space-y-4">
+        <div class="w-11 h-11 rounded-2xl bg-brand-soft text-brand flex items-center justify-center mx-auto">
+          <Bookmark class="w-5 h-5" />
+        </div>
+        <div class="space-y-1.5">
+          <p class="text-sm font-bold text-ink">キャンバスに資料を配置しましょう</p>
+          <p class="text-xs text-ink-muted leading-relaxed">
+            ブックマークブラウザから保存済み資料を1クリックで配置したり、画像をドラッグ＆ドロップして自由に並べられます。
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            class="px-4 py-2 rounded-xl bg-brand hover:bg-brand-hover text-brand-fg text-xs font-bold transition-colors flex items-center gap-1.5"
+            @click="boardStore.isBrowserOpen = true"
+          >
+            <Bookmark class="w-3.5 h-3.5" />
+            <span>ブックマークから配置</span>
+          </button>
+          <button
+            type="button"
+            class="px-3.5 py-2 rounded-xl bg-pixiv hover:bg-pixiv-hover text-white text-xs font-bold transition-colors flex items-center gap-1.5"
+            @click="emit('open-pixiv')"
+          >
+            <Compass class="w-3.5 h-3.5" />
+            <span>pixivから探す</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 選択中アイテムのカラーチップバー（下部ツールバーと重ならないよう上に配置） -->
     <div
       v-if="activePalette.length > 0"
-      class="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-auto animate-slide-up"
+      class="absolute bottom-16 sm:bottom-20 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-1.5rem)] z-20 pointer-events-auto overflow-x-auto no-scrollbar animate-slide-up whitespace-nowrap"
     >
       <ColorPaletteBar :palette="activePalette" :title="boardStore.activeItem?.caption" />
     </div>
 
-    <!-- 右下: ズーム表示 / ホイールモード -->
-    <div class="absolute bottom-6 right-6 flex items-center gap-2 z-10 select-none">
+    <!-- ズーム操作 / ホイールモード（モバイルでは右上に配置して下部ツールバーとの重なりを防ぐ） -->
+    <div class="absolute top-3 right-3 md:top-auto md:bottom-6 md:right-6 flex items-center gap-2 z-10 select-none" role="group" aria-label="ズームとスクロール操作">
       <button
         type="button"
-        class="floating-bar px-2.5 py-1 rounded-full text-xs font-mono text-ink-muted hover:text-ink transition-colors"
+        class="hidden md:inline-flex floating-bar px-2.5 py-1 rounded-full text-xs font-mono text-ink-muted hover:text-ink transition-colors"
         :title="wheelMode === 'scroll' ? 'ホイール/トラックパッド: パン。クリックでズームに切替' : 'ホイール: ズーム。クリックでパンに切替'"
+        :aria-label="`ホイールモード切り替え（現在: ${wheelMode === 'scroll' ? 'パン' : 'ズーム'}）`"
+        :aria-pressed="wheelMode === 'zoom'"
         @click="wheelMode = wheelMode === 'scroll' ? 'zoom' : 'scroll'"
       >
         {{ wheelMode === 'scroll' ? 'Pan' : 'Zoom' }}
       </button>
 
-      <div class="floating-bar px-3 py-1 rounded-full text-xs font-mono text-ink-muted pointer-events-none">
-        {{ Math.round(zoom * 100) }}%
+      <div class="floating-bar px-1 py-0.5 rounded-full flex items-center gap-0.5 text-xs font-mono text-ink-muted">
+        <button
+          type="button"
+          class="w-6 h-6 rounded-full hover:bg-canvas-hover hover:text-ink transition-colors flex items-center justify-center font-bold"
+          title="ズームアウト (-)"
+          aria-label="ズームアウト"
+          @click="stepZoom(1 / 1.2)"
+        >
+          −
+        </button>
+        <button
+          type="button"
+          class="px-1.5 py-0.5 rounded hover:bg-canvas-hover hover:text-ink transition-colors min-w-[44px] text-center"
+          title="クリックで100%にリセット (Cmd+0)"
+          aria-label="ズーム倍率を100%にリセット"
+          @click="handleResetZoom"
+        >
+          {{ Math.round(zoom * 100) }}%
+        </button>
+        <button
+          type="button"
+          class="w-6 h-6 rounded-full hover:bg-canvas-hover hover:text-ink transition-colors flex items-center justify-center font-bold"
+          title="ズームイン (+)"
+          aria-label="ズームイン"
+          @click="stepZoom(1.2)"
+        >
+          +
+        </button>
       </div>
-
     </div>
   </div>
 </template>

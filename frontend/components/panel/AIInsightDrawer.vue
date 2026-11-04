@@ -95,7 +95,7 @@ const SECTIONS = [
 <template>
   <aside
     v-if="isOpen"
-    class="relative h-full w-full sm:w-[min(400px,34vw)] shrink-0 flex flex-col border-l border-canvas-border bg-canvas-panel shadow-pop"
+    class="fixed inset-x-0 bottom-0 top-14 z-40 md:relative md:inset-auto md:z-30 h-[calc(100dvh-3.5rem)] md:h-full w-full md:w-[min(400px,34vw)] shrink-0 flex flex-col border-l border-canvas-border bg-canvas-panel shadow-pop"
     aria-label="AI解析サイドバー"
   >
     <!-- ヘッダー -->

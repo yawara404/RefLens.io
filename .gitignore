@@ -1,20 +1,29 @@
 # ============================================================
-# ローカル専用ドキュメント（GitHub には上げない）
+# ローカル専用ドキュメント・運用スクリプト（GitHub には上げない）
 # ============================================================
 README.local
 README.local.md
+/scripts/
 
 # ============================================================
 # シークレット / ローカルデータ
 # ============================================================
+.env
+.env.*
+!.env.example
 backend/.env
+backend/.env.*
+!backend/.env.example
 backend/*.db
 backend/*.db-*
+backend/*.sqlite*
 backend/uploads/
 backend/*-uploads/
 backend/.pixiv-cache/
 backend/.pixiv-local-cache/
 backend/.pixiv-public-cache/
+*.pem
+*.key
 
 # Cloudflare Tunnel の秘密情報。本体はローカルに置き、雛形だけコミットする。
 cloudflare/reflens.yml
@@ -22,6 +31,7 @@ cloudflare/reflens.yml
 # ============================================================
 # 依存関係 / ビルド成果物
 # ============================================================
+node_modules/
 backend/venv/
 frontend/node_modules/
 frontend/.nuxt/

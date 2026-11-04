@@ -26,6 +26,10 @@ export const useBoardStore = defineStore('board', {
     quickLookItem: null as BookmarkItem | null,
     isAddingBookmark: false,
 
+    // キャンバス中央へのスマート配置用座標とオフセットカウンタ
+    viewportCenter: { x: 240, y: 180 },
+    placementCascadeIndex: 0,
+
     /** 一度でも読み込んだことがあるか（空状態表示の抑止） */
     hasLoadedBookmarks: false,
 
@@ -34,6 +38,14 @@ export const useBoardStore = defineStore('board', {
   }),
 
   getters: {
+    canUndo(state): boolean {
+      return state.historyIndex > 0
+    },
+
+    canRedo(state): boolean {
+      return state.historyIndex < state.history.length - 1
+    },
+
     selectedItems(state): CanvasItem[] {
       return state.items.filter(item => state.selectedItemIds.includes(item.id))
     },
@@ -63,26 +75,16 @@ export const useBoardStore = defineStore('board', {
         .map(i => i.id)
     },
 
-    /** ライブラリ内でフィルタリングされたブックマーク */
+    /** ライブラリ内でフィルタリングされたブックマーク（キャンバスのsearchQueryとは独立） */
     filteredBookmarks(state): BookmarkItem[] {
-      const q = state.searchQuery.toLowerCase().trim()
-
       return state.bookmarks.filter(b => {
-        if (state.selectedSourceType !== 'all' && b.source_type !== state.selectedSourceType) {
+        if (state.selectedSourceType !== 'all' && state.selectedSourceType !== 'pixiv_bookmarks' && b.source_type !== state.selectedSourceType) {
           return false
         }
-        if (state.selectedFolder !== 'All References' && b.folder_name !== state.selectedFolder) {
+        if (state.selectedFolder && state.selectedFolder !== 'All References' && b.folder_name !== state.selectedFolder) {
           return false
         }
-        if (!q) return true
-
-        const corpus = [
-          b.title,
-          b.author_name || '',
-          b.source_url || '',
-          (b.ai_analysis?.tags || []).join(' '),
-        ].join(' ')
-        return corpus.toLowerCase().includes(q)
+        return true
       })
     },
   },
@@ -229,17 +231,92 @@ export const useBoardStore = defineStore('board', {
       }
     },
 
-    async createFolder(name: string) {
+    async createFolder(name: string, color = '#6366f1') {
       const trimmed = name.trim()
       if (!trimmed) return
 
       await $fetch(this.api('/bookmarks/folders'), {
         method: 'POST',
-        body: { name: trimmed },
+        body: { name: trimmed, color },
       })
       await this.fetchFolders()
       this.selectedFolder = trimmed
       useToast().success('フォルダを作成しました', trimmed)
+    },
+
+    /** ユーザー作成コレクションの名前を変更する（既定コレクションは対象外） */
+    async renameFolder(folderId: string, name: string, color?: string) {
+      const trimmed = name.trim()
+      if (!trimmed) return false
+
+      const previousName = this.folders.find(f => f.id === folderId)?.name
+
+      try {
+        await $fetch(this.api(`/bookmarks/folders/${folderId}`), {
+          method: 'PUT',
+          body: { name: trimmed, ...(color ? { color } : {}) },
+        })
+        // 表示中のコレクションをリネームした場合は選択状態も追従させる
+        if (previousName && this.selectedFolder === previousName) {
+          this.selectedFolder = trimmed
+        }
+        await Promise.all([this.fetchFolders(), this.fetchBookmarks()])
+        useToast().success('コレクションを更新しました', trimmed)
+        return true
+      } catch (e: any) {
+        useToast().error(
+          'コレクション名の変更に失敗しました',
+          e?.data?.detail || e?.message
+        )
+        return false
+      }
+    },
+
+    /** ユーザー作成コレクションのカラーを変更する */
+    async updateFolderColor(folderId: string, color: string) {
+      const folder = this.folders.find(f => f.id === folderId)
+      try {
+        await $fetch(this.api(`/bookmarks/folders/${folderId}`), {
+          method: 'PUT',
+          body: { color },
+        })
+        if (folder) {
+          folder.color = color
+        }
+        await this.fetchFolders()
+        useToast().success('フォルダカラーを変更しました', folder?.name)
+        return true
+      } catch (e: any) {
+        useToast().error(
+          'フォルダカラーの変更に失敗しました',
+          e?.data?.detail || e?.message
+        )
+        return false
+      }
+    },
+
+    /** ユーザー作成コレクションを削除する（中の資料は All References へ戻す） */
+    async deleteFolder(folderId: string) {
+      const name = this.folders.find(f => f.id === folderId)?.name
+
+      try {
+        await $fetch(this.api(`/bookmarks/folders/${folderId}`), { method: 'DELETE' })
+        if (name && this.selectedFolder === name) {
+          this.selectedFolder = 'All References'
+        }
+        await Promise.all([this.fetchFolders(), this.fetchBookmarks()])
+        useToast().success(
+          'コレクションを削除しました',
+          name ? `${name} の資料は All References に移動しました` : undefined
+        )
+        return true
+      } catch (e: any) {
+        useToast().error(
+          'コレクションの削除に失敗しました',
+          e?.data?.detail || e?.message
+        )
+        return false
+      }
     },
 
     async addBookmark(
@@ -287,8 +364,26 @@ export const useBoardStore = defineStore('board', {
       }
     },
 
-    async placeBookmarkOnBoard(bookmarkId: string, worldX = 100, worldY = 100) {
+    setViewportCenter(worldX: number, worldY: number) {
+      this.viewportCenter = { x: Math.round(worldX), y: Math.round(worldY) }
+      this.placementCascadeIndex = 0
+    },
+
+    getNextPlacementCoords(worldX?: number, worldY?: number) {
+      if (typeof worldX === 'number' && typeof worldY === 'number') {
+        return { x: Math.round(worldX), y: Math.round(worldY) }
+      }
+      const step = (this.placementCascadeIndex % 8) * 32
+      this.placementCascadeIndex++
+      return {
+        x: Math.round(this.viewportCenter.x - 140 + step),
+        y: Math.round(this.viewportCenter.y - 140 + step),
+      }
+    },
+
+    async placeBookmarkOnBoard(bookmarkId: string, worldX?: number, worldY?: number) {
       if (!this.currentBoard) return
+      const coords = this.getNextPlacementCoords(worldX, worldY)
       try {
         const res = await $fetch<{ success: boolean; item: CanvasItem }>(
           this.api('/bookmarks/place-on-board'),
@@ -297,8 +392,8 @@ export const useBoardStore = defineStore('board', {
             body: {
               board_id: this.currentBoard.id,
               bookmark_id: bookmarkId,
-              pos_x: worldX,
-              pos_y: worldY,
+              pos_x: coords.x,
+              pos_y: coords.y,
             },
           }
         )
@@ -459,7 +554,11 @@ export const useBoardStore = defineStore('board', {
     },
 
     async uploadImages(files: File[], worldX = 0, worldY = 0) {
-      if (!this.currentBoard || !files.length) return
+      if (!files.length) return 0
+      if (!this.currentBoard) {
+        await this.loadFirstBoard()
+      }
+      if (!this.currentBoard) return 0
       const toast = useToast()
 
       let uploaded = 0
@@ -491,6 +590,7 @@ export const useBoardStore = defineStore('board', {
         await this.fetchFolders()
         toast.success(`${uploaded} 枚の画像を追加しました`, 'AI解析をバックグラウンドで実行中です')
       }
+      return uploaded
     },
 
     async reanalyzeActiveItem() {

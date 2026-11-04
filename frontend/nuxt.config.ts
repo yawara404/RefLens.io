@@ -40,7 +40,7 @@ export default defineNuxtConfig({
       },
       meta: [
         { charset: 'utf-8' },
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         {
           name: 'description',
           content: 'PureRef-inspired infinite reference canvas powered by Multimodal AI visual anatomy analysis & pixiv integration.'

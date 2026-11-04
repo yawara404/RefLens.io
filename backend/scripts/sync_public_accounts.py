@@ -216,26 +216,40 @@ def sync_table(
         f"SELECT {', '.join(common)} FROM '{table}' {where}", args
     ).fetchall()
 
-    existing_keys = {
-        tuple(r) for r in target.execute(f"SELECT {', '.join(pks)} FROM '{table}'")
-    }
     common_pks = [c for c in pks if c in common]
     if len(common_pks) != len(pks):
         # PK の片方が無いテーブルは安全のためスキップ
         return 0
+    non_pk_cols = [c for c in common if c not in common_pks]
+    existing_rows = {
+        tuple(r[: len(common_pks)]): r[len(common_pks) :]
+        for r in target.execute(
+            f"SELECT {', '.join(common_pks + non_pk_cols)} FROM '{table}'"
+        )
+    }
 
     idx = {c: i for i, c in enumerate(common)}
     added = 0
     for row in src_rows:
         key = tuple(row[idx[c]] for c in common_pks)
-        if key in existing_keys:
+        non_pk_vals = tuple(row[idx[c]] for c in non_pk_cols)
+        if key in existing_rows:
+            if non_pk_cols and existing_rows[key] != non_pk_vals:
+                set_clause = ", ".join(f'"{c}" = ?' for c in non_pk_cols)
+                where_clause = " AND ".join(f'"{c}" = ?' for c in common_pks)
+                target.execute(
+                    f"UPDATE '{table}' SET {set_clause} WHERE {where_clause}",
+                    non_pk_vals + key,
+                )
+                existing_rows[key] = non_pk_vals
+                added += 1
             continue
         target.execute(
             f"INSERT INTO '{table}' ({', '.join(common)}) VALUES"
             f" ({', '.join('?' * len(common))})",
             tuple(row),
         )
-        existing_keys.add(key)
+        existing_rows[key] = non_pk_vals
         added += 1
 
     target.commit()
