@@ -9,7 +9,7 @@
 // ベースパスは app.baseURL 側だけに持たせる。両方に含めると
 // /RefLens.io//uploads/... という二重スラッシュになり画像が 404 になるため。
 // 結合は composables/useAppConfig.ts が実行時に行う。
-const appBaseURL = process.env.NUXT_APP_BASE_URL || '/'
+const appBaseURL = process.env.NUXT_APP_BASE_URL || (process.env.NODE_ENV === 'production' ? '/RefLens.io/' : '/')
 const appBase = appBaseURL.endsWith('/') ? appBaseURL : `${appBaseURL}/`
 
 export default defineNuxtConfig({
