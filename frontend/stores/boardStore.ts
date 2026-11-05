@@ -664,6 +664,168 @@ export const useBoardStore = defineStore('board', {
       this.recordHistory()
     },
 
+    alignSelected(alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') {
+      const targets = this.selectedItems.filter(it => !it.is_locked)
+      if (targets.length < 2) return
+
+      const minX = Math.min(...targets.map(it => it.pos_x))
+      const maxX = Math.max(...targets.map(it => it.pos_x + it.width))
+      const minY = Math.min(...targets.map(it => it.pos_y))
+      const maxY = Math.max(...targets.map(it => it.pos_y + it.height))
+
+      for (const item of targets) {
+        if (alignment === 'left') {
+          item.pos_x = minX
+        } else if (alignment === 'center') {
+          item.pos_x = Math.round((minX + maxX) / 2 - item.width / 2)
+        } else if (alignment === 'right') {
+          item.pos_x = maxX - item.width
+        } else if (alignment === 'top') {
+          item.pos_y = minY
+        } else if (alignment === 'middle') {
+          item.pos_y = Math.round((minY + maxY) / 2 - item.height / 2)
+        } else if (alignment === 'bottom') {
+          item.pos_y = maxY - item.height
+        }
+      }
+      this.recordHistory()
+      useToast().success(`資料を${alignment === 'left' ? '左' : alignment === 'right' ? '右' : alignment === 'top' ? '上' : alignment === 'bottom' ? '下' : '中央'}揃えにしました`)
+    },
+
+    distributeSelected(axis: 'horizontal' | 'vertical') {
+      const targets = [...this.selectedItems.filter(it => !it.is_locked)]
+      if (targets.length < 3) {
+        useToast().info('等間隔配置には3つ以上の資料を選択してください')
+        return
+      }
+
+      if (axis === 'horizontal') {
+        targets.sort((a, b) => a.pos_x - b.pos_x)
+        const first = targets[0]
+        const last = targets[targets.length - 1]
+        const totalSpan = (last.pos_x + last.width) - first.pos_x
+        const itemsWidthSum = targets.reduce((sum, it) => sum + it.width, 0)
+        const totalGap = totalSpan - itemsWidthSum
+        const gap = totalGap / (targets.length - 1)
+
+        let currX = first.pos_x
+        for (const item of targets) {
+          item.pos_x = Math.round(currX)
+          currX += item.width + gap
+        }
+      } else {
+        targets.sort((a, b) => a.pos_y - b.pos_y)
+        const first = targets[0]
+        const last = targets[targets.length - 1]
+        const totalSpan = (last.pos_y + last.height) - first.pos_y
+        const itemsHeightSum = targets.reduce((sum, it) => sum + it.height, 0)
+        const totalGap = totalSpan - itemsHeightSum
+        const gap = totalGap / (targets.length - 1)
+
+        let currY = first.pos_y
+        for (const item of targets) {
+          item.pos_y = Math.round(currY)
+          currY += item.height + gap
+        }
+      }
+      this.recordHistory()
+      useToast().success(`資料を${axis === 'horizontal' ? '水平均等' : '垂直均等'}に配置しました`)
+    },
+
+    arrangeSelectedGrid() {
+      const targets = [...this.selectedItems.filter(it => !it.is_locked)]
+      if (!targets.length) return
+
+      targets.sort((a, b) => (a.pos_y - b.pos_y) || (a.pos_x - b.pos_x))
+      const cols = Math.ceil(Math.sqrt(targets.length))
+      const minX = Math.min(...targets.map(it => it.pos_x))
+      const minY = Math.min(...targets.map(it => it.pos_y))
+      const gap = 24
+
+      let currX = minX
+      let currY = minY
+      let rowMaxH = 0
+
+      targets.forEach((item, idx) => {
+        if (idx > 0 && idx % cols === 0) {
+          currX = minX
+          currY += rowMaxH + gap
+          rowMaxH = 0
+        }
+        item.pos_x = Math.round(currX)
+        item.pos_y = Math.round(currY)
+        item.rotation = 0
+        currX += item.width + gap
+        rowMaxH = Math.max(rowMaxH, item.height)
+      })
+
+      this.recordHistory()
+      useToast().success(`${targets.length}件の資料をグリッド整列しました`)
+    },
+
+    async duplicateSelected() {
+      if (!this.currentBoard || !this.selectedItemIds.length) return
+      try {
+        const res = await $fetch<{ items: CanvasItem[] }>(
+          this.api(`/boards/${this.currentBoard.id}/items/duplicate`),
+          {
+            method: 'POST',
+            body: { item_ids: this.selectedItemIds, offset_x: 36, offset_y: 36 },
+          }
+        )
+        if (res?.items?.length) {
+          this.items.push(...res.items)
+          this.selectedItemIds = res.items.map(i => i.id)
+          this.recordHistory()
+          useToast().success(`${res.items.length}件の資料を複製しました`)
+        }
+      } catch (e: any) {
+        console.error('Duplicate failed:', e)
+        useToast().error('資料の複製に失敗しました', e?.data?.detail || e?.message)
+      }
+    },
+
+    async saveCanvasItemsToFolder(itemIds: string[], folderName: string) {
+      if (!this.currentBoard) return false
+      const trimmed = folderName.trim() || 'All References'
+      try {
+        const res = await $fetch<{ success: boolean; count: number; folder_name: string; media_ids: string[] }>(
+          this.api(`/boards/${this.currentBoard.id}/save-to-folder`),
+          {
+            method: 'POST',
+            body: { folder_name: trimmed, item_ids: itemIds.length ? itemIds : undefined },
+          }
+        )
+        if (res?.success) {
+          const mediaIdSet = new Set(res.media_ids || [])
+          for (const item of this.items) {
+            if (item.media && mediaIdSet.has(item.media.id)) {
+              item.media.folder_name = trimmed
+            }
+          }
+          for (const b of this.bookmarks) {
+            if (mediaIdSet.has(b.id)) {
+              b.folder_name = trimmed
+            }
+          }
+          await this.fetchFolders()
+          await this.fetchBookmarks()
+          const label = trimmed === 'All References' ? 'すべての資料' : `「${trimmed}」`
+          useToast().success(`${res.count} 件の資料を${label}に保存しました`)
+          return true
+        }
+        return false
+      } catch (e: any) {
+        console.error('Save to folder failed:', e)
+        useToast().error('フォルダへの保存に失敗しました', e?.data?.detail || e?.message)
+        return false
+      }
+    },
+
+    async saveAllCanvasToFolder(folderName: string) {
+      return this.saveCanvasItemsToFolder([], folderName)
+    },
+
     bringToFront(id?: string) {
       const targets = id ? [id] : this.selectedItemIds
       const maxZ = Math.max(...this.items.map(i => i.z_index), 0)

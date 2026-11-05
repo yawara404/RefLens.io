@@ -23,6 +23,7 @@ import {
   Settings2,
   SlidersHorizontal,
   Folder,
+  CheckSquare,
 } from 'lucide-vue-next'
 import AppHeader from '~/components/ui/AppHeader.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
@@ -211,6 +212,23 @@ function closeDetail() {
   activePageIndex.value = 0
 }
 
+const isMultiSelectMode = ref(false)
+
+function toggleMultiSelectMode() {
+  isMultiSelectMode.value = !isMultiSelectMode.value
+  if (!isMultiSelectMode.value && pixiv.selectedIds.value.length > 0) {
+    // keeping selection is okay, or user can clear from floating bar
+  }
+}
+
+function handleCardClick(item: PixivArtwork) {
+  if (isMultiSelectMode.value || pixiv.selectedIds.value.length > 0) {
+    toggleSelect(item.id)
+  } else {
+    openDetail(item)
+  }
+}
+
 function toggleSelect(id: string) {
   pixiv.toggleSelection(id)
 }
@@ -262,12 +280,11 @@ async function handleStash(artwork?: PixivArtwork) {
   await boardStore.fetchFolders()
   const label = formatFolderLabel(targetFolder)
   toast.success(`${count} 作品を「${label}」に保存しました`)
-  pixiv.clearSelection()
-  closeDetail()
-  searchInput.value = ''
-  activeCategory.value = 'saved'
-  await nextTick()
-  if (viewMainRef.value) viewMainRef.value.scrollTop = 0
+  if (artwork) {
+    closeDetail()
+  } else {
+    pixiv.clearSelection()
+  }
 }
 
 async function handleMoveBookmark(item: BookmarkItem, folderName: string) {
@@ -323,7 +340,8 @@ async function handlePlaceOnCanvas(artwork?: PixivArtwork) {
   }
 
   isPlacing.value = true
-  const count = await pixiv.stockToCanvas(ids, boardId)
+  const targetFolder = selectedTargetFolder.value || 'All References'
+  const count = await pixiv.stockToCanvas(ids, boardId, undefined, undefined, targetFolder)
   isPlacing.value = false
 
   if (!count) return
@@ -545,6 +563,19 @@ onUnmounted(() => {
 
             <div class="flex items-center gap-1.5 shrink-0">
               <button
+                v-if="activeCategory !== 'saved'"
+                type="button"
+                class="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5 whitespace-nowrap"
+                :class="isMultiSelectMode || pixiv.selectedIds.value.length
+                  ? 'bg-pixiv text-white border-pixiv shadow-sm font-bold'
+                  : 'bg-canvas-bg hover:bg-canvas-hover text-ink border-canvas-border-strong'"
+                @click="toggleMultiSelectMode"
+              >
+                <CheckSquare class="w-3.5 h-3.5 shrink-0" />
+                <span>{{ isMultiSelectMode || pixiv.selectedIds.value.length ? '複数選択中' : '複数選択' }}</span>
+              </button>
+
+              <button
                 type="button"
                 class="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-canvas-bg hover:bg-canvas-hover text-ink border border-canvas-border-strong transition-colors flex items-center gap-1.5 whitespace-nowrap"
                 @click="isFilterModalOpen = true"
@@ -724,9 +755,9 @@ onUnmounted(() => {
           :class="pixiv.isSelected(item.id)
             ? 'border-pixiv ring-2 ring-pixiv/40'
             : 'border-canvas-border hover:border-canvas-border-strong focus-visible:border-pixiv'"
-          @click="openDetail(item)"
-          @keydown.enter.self.prevent="openDetail(item)"
-          @keydown.space.self.prevent="openDetail(item)"
+          @click="handleCardClick(item)"
+          @keydown.enter.self.prevent="handleCardClick(item)"
+          @keydown.space.self.prevent="handleCardClick(item)"
         >
           <!-- サムネイル -->
           <div class="relative aspect-[4/3] bg-canvas-sunken overflow-hidden">
@@ -737,13 +768,15 @@ onUnmounted(() => {
               loading="lazy"
             />
 
-            <!-- 選択チェック（モバイルでは常時表示してタップで複数選択可能に） -->
+            <!-- 選択チェック（複数選択中や選択済みは常時表示、通常時はホバー表示） -->
             <button
               type="button"
               class="absolute top-2 right-2 z-20 w-6 h-6 sm:w-5 sm:h-5 rounded-full border flex items-center justify-center transition-all shadow-sm"
               :class="pixiv.isSelected(item.id)
                 ? 'bg-pixiv border-pixiv opacity-100'
-                : 'bg-canvas-panel/90 border-canvas-border-strong opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100'"
+                : (isMultiSelectMode || pixiv.selectedIds.value.length
+                  ? 'bg-canvas-panel/90 border-canvas-border-strong opacity-100 hover:border-pixiv'
+                  : 'bg-canvas-panel/90 border-canvas-border-strong opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100')"
               :aria-label="pixiv.isSelected(item.id) ? '選択解除' : '選択'"
               :aria-pressed="pixiv.isSelected(item.id)"
               @click.stop="toggleSelect(item.id)"
@@ -800,12 +833,10 @@ onUnmounted(() => {
                 <button
                   type="button"
                   class="flex-1 py-1.5 rounded-lg bg-pixiv text-white text-[11px] font-bold hover:bg-pixiv-hover transition-colors flex items-center justify-center gap-1"
-                  @click="pixiv.selectedIds.value.includes(item.id)
-                    ? toggleSelect(item.id)
-                    : (pixiv.clearSelection(), toggleSelect(item.id))"
+                  @click="toggleSelect(item.id)"
                 >
                   <Bookmark class="w-3 h-3" />
-                  {{ pixiv.isSelected(item.id) ? '選択済み' : '選択' }}
+                  {{ pixiv.isSelected(item.id) ? '選択解除' : '選択' }}
                 </button>
               </div>
             </div>
@@ -913,6 +944,15 @@ onUnmounted(() => {
         >
           <Layers class="w-3 h-3" />
           キャンバスへ
+        </button>
+        <button
+          type="button"
+          class="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
+          title="選択をクリア"
+          aria-label="選択をクリア"
+          @click="pixiv.clearSelection(); isMultiSelectMode = false"
+        >
+          <X class="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

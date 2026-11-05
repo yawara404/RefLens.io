@@ -16,7 +16,16 @@ import {
   Trash2,
   Maximize2,
   X,
+  Copy,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignVerticalJustifyCenter,
+  AlignHorizontalJustifyCenter,
+  LayoutGrid,
+  Folder,
 } from 'lucide-vue-next'
+import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import type { CanvasItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
 import { useHelpStore } from '~/stores/helpStore'
@@ -67,6 +76,9 @@ const panLast = { x: 0, y: 0 }
 
 const draggingItem = ref<CanvasItem | null>(null)
 const dragOffset = ref<{ id: string; offsetX: number; offsetY: number }[]>([])
+const pendingSingleSelectId = ref<string | null>(null)
+let dragDistance = 0
+let dragStartClient = { x: 0, y: 0 }
 
 const resizingItem = ref<CanvasItem | null>(null)
 const resizeDirection = ref<string>('')
@@ -245,6 +257,11 @@ function onPointerMove(e: PointerEvent) {
 
   // --- アイテムドラッグ ---
   if (draggingItem.value) {
+    dragDistance = Math.hypot(e.clientX - dragStartClient.x, e.clientY - dragStartClient.y)
+    if (dragDistance > 4) {
+      pendingSingleSelectId.value = null
+    }
+
     const worldMouse = screenToWorld(e.clientX, e.clientY, rect)
     for (const offset of dragOffset.value) {
       boardStore.updateItem(offset.id, {
@@ -349,6 +366,11 @@ function onPointerUp(e?: PointerEvent) {
   rotatingItem.value = null
   isSelectingBox.value = false
 
+  if (pendingSingleSelectId.value && dragDistance <= 4) {
+    boardStore.selectItem(pendingSingleSelectId.value, false)
+  }
+  pendingSingleSelectId.value = null
+
   if (wasTransformingItem) {
     boardStore.recordHistory()
   }
@@ -367,18 +389,41 @@ function onWindowBlur() {
 // アイテム操作の開始
 // ---------------------------------------------------------------
 function handleItemSelect(item: CanvasItem, evt: MouseEvent) {
-  boardStore.selectItem(item.id, evt.shiftKey || evt.metaKey || evt.ctrlKey)
+  const isMulti = evt.shiftKey || evt.metaKey || evt.ctrlKey
+  if (isMulti) {
+    boardStore.selectItem(item.id, true)
+    pendingSingleSelectId.value = null
+    return
+  }
+
+  // もし既に複数選択に含まれている場合は、即座に他を解除せずドラッグに備える
+  if (boardStore.selectedItemIds.includes(item.id)) {
+    if (boardStore.selectedItemIds.length > 1) {
+      pendingSingleSelectId.value = item.id
+    }
+    return
+  }
+
+  boardStore.selectItem(item.id, false)
+  pendingSingleSelectId.value = null
 }
 
 function handleStartDrag(evt: PointerEvent, item: CanvasItem) {
   if (isSpacePressed.value || !containerRef.value) return
   draggingItem.value = item
+  dragDistance = 0
+  dragStartClient = { x: evt.clientX, y: evt.clientY }
 
   const rect = containerRef.value.getBoundingClientRect()
   const worldMouse = screenToWorld(evt.clientX, evt.clientY, rect)
 
-  const targets = boardStore.selectedItems.length ? boardStore.selectedItems : [item]
-  dragOffset.value = targets.map(t => ({
+  // 選択に含まれていないアイテムをドラッグ開始した場合は単一選択にする
+  if (!boardStore.selectedItemIds.includes(item.id)) {
+    boardStore.selectItem(item.id, evt.shiftKey || evt.metaKey || evt.ctrlKey)
+  }
+
+  const targets = boardStore.selectedItems.filter(it => !it.is_locked)
+  dragOffset.value = (targets.length ? targets : [item]).map(t => ({
     id: t.id,
     offsetX: t.pos_x - worldMouse.x,
     offsetY: t.pos_y - worldMouse.y,
@@ -441,6 +486,10 @@ function onKeyDown(e: KeyboardEvent) {
       case 'a':
         e.preventDefault()
         boardStore.selectAll()
+        return
+      case 'd':
+        e.preventDefault()
+        boardStore.duplicateSelected()
         return
       case 'z':
         e.preventDefault()
@@ -827,7 +876,80 @@ watch(() => props.boardId, () => {
             : `${boardStore.selectedItems.length}件を選択中` }}
         </span>
 
+        <!-- フォルダ選択（単一・複数共通） -->
+        <div class="flex items-center gap-1 shrink-0">
+          <FolderSelectDropdown
+            :model-value="boardStore.selectedItems.length === 1 ? (boardStore.activeItem?.media?.folder_name || 'All References') : 'All References'"
+            :placeholder="boardStore.selectedItems.length === 1 ? undefined : 'フォルダへ一括保存'"
+            compact
+            align="top"
+            @change="(name) => boardStore.saveCanvasItemsToFolder(boardStore.selectedItemIds, name)"
+          />
+        </div>
+
         <div class="h-4 w-px bg-canvas-border mx-0.5 shrink-0" />
+
+        <!-- 複製 -->
+        <button
+          type="button"
+          class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+          title="複製 [Cmd+D]"
+          aria-label="複製"
+          @click="boardStore.duplicateSelected()"
+        >
+          <Copy class="w-3.5 h-3.5" />
+        </button>
+
+        <!-- 複数選択時の整列・均等配置ツール -->
+        <template v-if="boardStore.selectedItems.length > 1">
+          <div class="h-4 w-px bg-canvas-border mx-0.5 shrink-0" />
+          <button
+            type="button"
+            class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+            title="左揃え"
+            aria-label="左揃え"
+            @click="boardStore.alignSelected('left')"
+          >
+            <AlignLeft class="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+            title="水平中央揃え"
+            aria-label="水平中央揃え"
+            @click="boardStore.alignSelected('center')"
+          >
+            <AlignCenter class="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+            title="右揃え"
+            aria-label="右揃え"
+            @click="boardStore.alignSelected('right')"
+          >
+            <AlignRight class="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+            title="水平均等配置"
+            aria-label="水平均等配置"
+            @click="boardStore.distributeSelected('horizontal')"
+          >
+            <AlignHorizontalJustifyCenter class="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            class="p-1.5 rounded-xl text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors shrink-0"
+            title="グリッド整列"
+            aria-label="グリッド整列"
+            @click="boardStore.arrangeSelectedGrid()"
+          >
+            <LayoutGrid class="w-3.5 h-3.5" />
+          </button>
+          <div class="h-4 w-px bg-canvas-border mx-0.5 shrink-0" />
+        </template>
 
         <button
           v-if="boardStore.activeItem"

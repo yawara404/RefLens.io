@@ -6,6 +6,9 @@ import {
   ExternalLink,
   Instagram,
   Globe,
+  Bookmark,
+  Folder,
+  GripVertical,
 } from 'lucide-vue-next'
 import type { CanvasItem } from '~/types'
 import { useMediaUrl } from '~/composables/useMediaUrl'
@@ -102,6 +105,15 @@ function onPointerMove(evt: PointerEvent) {
 
 onBeforeUnmount(clearLongPress)
 
+function onDragStart(evt: DragEvent) {
+  if (!evt.dataTransfer) return
+  evt.dataTransfer.effectAllowed = 'copyMove'
+  const bookmarkId = props.item.media_item_id || props.item.media?.id || props.item.id
+  evt.dataTransfer.setData('application/reflens-bookmark-id', bookmarkId)
+  evt.dataTransfer.setData('application/reflens-canvas-item-id', props.item.id)
+  evt.dataTransfer.setData('text/plain', props.item.caption || props.item.media?.title || props.item.id)
+}
+
 function onContextMenu(evt: MouseEvent) {
   emit('context-menu', evt, props.item)
 }
@@ -163,9 +175,26 @@ const sourceBadgeClass = computed(() => {
       <!-- ロック表示 -->
       <div
         v-if="item.is_locked"
-        class="absolute top-2 right-2 p-1 rounded bg-canvas-raised/90 text-warn shadow-sm"
+        class="absolute top-2 right-2 p-1 rounded bg-canvas-raised/90 text-warn shadow-sm z-10"
       >
         <Lock class="w-3.5 h-3.5" />
+      </div>
+
+      <!-- ブックマークブラウザへのドラッグハンドル（非ロックかつホバーまたは選択時に表示） -->
+      <div
+        v-else-if="isHovered || isSelected"
+        class="absolute top-2 right-2 z-20 flex items-center gap-1 pointer-events-auto animate-fade-in"
+        @pointerdown.stop
+      >
+        <div
+          draggable="true"
+          class="px-1.5 py-1 rounded-lg bg-canvas-panel/95 hover:bg-brand hover:text-brand-fg text-ink-muted border border-canvas-border shadow-sm cursor-grab active:cursor-grabbing transition-colors flex items-center gap-0.5 text-[10px] font-bold"
+          title="ドラッグしてブックマークブラウザやフォルダへ保存"
+          @dragstart="onDragStart"
+        >
+          <GripVertical class="w-3 h-3 opacity-60" />
+          <Bookmark class="w-3 h-3" />
+        </div>
       </div>
 
       <!-- ソースバッジ -->
@@ -188,6 +217,15 @@ const sourceBadgeClass = computed(() => {
           <Globe v-else class="w-3 h-3" />
           <ExternalLink class="w-2.5 h-2.5 opacity-75" />
         </a>
+      </div>
+
+      <!-- フォルダバッジ -->
+      <div
+        v-if="item.media?.folder_name && item.media.folder_name !== 'All References'"
+        class="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-canvas-panel/90 text-brand border border-canvas-border shadow-sm pointer-events-none truncate max-w-[140px]"
+      >
+        <Folder class="w-3 h-3 shrink-0" />
+        <span class="truncate">{{ item.media.folder_name }}</span>
       </div>
 
       <!-- AI解析済みマーカー -->

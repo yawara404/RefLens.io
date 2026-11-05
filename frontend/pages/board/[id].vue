@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import {
   Bookmark,
   Edit2,
+  Folder,
   Search,
   X,
 } from 'lucide-vue-next'
@@ -16,6 +17,7 @@ import AIInsightDrawer from '~/components/panel/AIInsightDrawer.vue'
 import SearchFilterBar from '~/components/panel/SearchFilterBar.vue'
 import PixivImportModal from '~/components/panel/PixivImportModal.vue'
 import InstagramImportModal from '~/components/panel/InstagramImportModal.vue'
+import CanvasSaveModal from '~/components/panel/CanvasSaveModal.vue'
 import CanvasControls from '~/components/ui/CanvasControls.vue'
 import AssetFileBrowser from '~/components/browser/AssetFileBrowser.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
@@ -31,6 +33,7 @@ const isInsightOpen = ref(false)
 const isSearchModalOpen = ref(false)
 const isPixivModalOpen = ref(false)
 const isInstagramModalOpen = ref(false)
+const isSaveModalOpen = ref(false)
 const editableTitle = ref('')
 
 async function init() {
@@ -153,6 +156,18 @@ onMounted(init)
             <X class="w-3.5 h-3.5 shrink-0" />
             <span class="hidden sm:inline">解除</span>
           </button>
+
+          <!-- 一括フォルダセーブボタン（キャンバス離脱前のワンクリック保存） -->
+          <button
+            v-if="boardStore.items.length > 0"
+            type="button"
+            class="pointer-events-auto floating-bar px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-bold text-ink hover:text-brand transition-colors shrink-0 shadow-sm whitespace-nowrap"
+            title="キャンバス上の資料を一括でフォルダに保存"
+            @click="isSaveModalOpen = true"
+          >
+            <Folder class="w-3.5 h-3.5 text-brand shrink-0" />
+            <span class="hidden sm:inline">一括保存</span>
+          </button>
         </div>
 
         <!-- 下部メインドック（w-max を指定してボタン文字の縦折り返しを完全防止） -->
@@ -164,6 +179,7 @@ onMounted(init)
             @open-pixiv="isPixivModalOpen = true"
             @open-instagram="isInstagramModalOpen = true"
             @open-insight="handleOpenInsight(boardStore.activeItem)"
+            @open-save-modal="isSaveModalOpen = true"
           />
         </div>
       </div>
@@ -249,6 +265,12 @@ onMounted(init)
         :board-id="boardId"
         @close="isInstagramModalOpen = false"
         @imported="handleFitView"
+      />
+
+      <CanvasSaveModal
+        :is-open="isSaveModalOpen"
+        :board-id="boardId"
+        @close="isSaveModalOpen = false"
       />
 
       <QuickLookModal />

@@ -389,6 +389,16 @@ onUnmounted(() => {
 
         <button
           type="button"
+          class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
+          role="menuitem"
+          @click="run(() => boardStore.duplicateSelected())"
+        >
+          <Copy class="w-3.5 h-3.5 text-brand" />
+          <span>資料を複製 (Cmd+D)</span>
+        </button>
+
+        <button
+          type="button"
           class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-danger hover:bg-danger-soft transition-colors"
           role="menuitem"
           @click="run(() => boardStore.deleteItem(item!.id))"

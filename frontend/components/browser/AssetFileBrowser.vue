@@ -248,11 +248,49 @@ function onFolderBookmarkDragLeave(folder: FolderItem) {
 async function onFolderBookmarkDrop(folder: FolderItem, e: DragEvent) {
   e.preventDefault()
   dragOverFolderTarget.value = null
+  const canvasItemId = e.dataTransfer?.getData('application/reflens-canvas-item-id')
   const bookmarkId = e.dataTransfer?.getData('application/reflens-bookmark-id')
-  if (!bookmarkId) return
-  const success = await boardStore.moveBookmarksFolder([bookmarkId], folder.name)
-  if (success) {
-    toast.success(`「${formatFolderLabel(folder.name)}」に移動しました`)
+
+  if (canvasItemId) {
+    const success = await boardStore.saveCanvasItemsToFolder([canvasItemId], folder.name)
+    if (success) {
+      toast.success(`キャンバスの資料を「${formatFolderLabel(folder.name)}」に移動しました`)
+    }
+    return
+  }
+
+  if (bookmarkId) {
+    const success = await boardStore.moveBookmarksFolder([bookmarkId], folder.name)
+    if (success) {
+      toast.success(`「${formatFolderLabel(folder.name)}」に移動しました`)
+    }
+  }
+}
+
+function onLibraryDragOver(e: DragEvent) {
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+}
+
+async function onLibraryDrop(e: DragEvent) {
+  e.preventDefault()
+  const canvasItemId = e.dataTransfer?.getData('application/reflens-canvas-item-id')
+  const bookmarkId = e.dataTransfer?.getData('application/reflens-bookmark-id')
+  const targetFolder = boardStore.selectedFolder || 'All References'
+
+  if (canvasItemId) {
+    const success = await boardStore.saveCanvasItemsToFolder([canvasItemId], targetFolder)
+    if (success) {
+      toast.success(`キャンバスの資料を「${formatFolderLabel(targetFolder)}」に保存しました`)
+    }
+    return
+  }
+
+  if (bookmarkId && targetFolder !== 'All References') {
+    const success = await boardStore.moveBookmarksFolder([bookmarkId], targetFolder)
+    if (success) {
+      toast.success(`「${formatFolderLabel(targetFolder)}」に移動しました`)
+    }
   }
 }
 
@@ -838,7 +876,7 @@ const SOURCE_PILLS = [
       </div>
 
       <!-- ==================== ライブラリ / 検索結果一覧 ==================== -->
-      <template v-else>
+      <div v-else class="space-y-3" @dragover="onLibraryDragOver" @drop="onLibraryDrop">
         <!-- 空状態 -->
         <div v-if="!displayedBookmarks.length" class="py-12 text-center space-y-3">
           <Bookmark class="w-8 h-8 text-ink-subtle mx-auto opacity-60" />
@@ -1033,7 +1071,7 @@ const SOURCE_PILLS = [
             </button>
           </div>
         </div>
-      </template>
+      </div>
     </div>
 
     <!-- 5. フッター -->

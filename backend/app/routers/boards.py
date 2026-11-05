@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
-from app.models.models import Board, CanvasItem, MediaItem, User
+from app.models.models import Board, CanvasItem, Folder, MediaItem, User
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/boards", tags=["boards"])
@@ -38,6 +38,15 @@ class BoardCreate(BaseModel):
     title: str = "Untitled Reference Board"
     description: Optional[str] = None
     background_theme: str = "dark-grid"
+
+class SaveToFolderRequest(BaseModel):
+    folder_name: str
+    item_ids: Optional[List[str]] = None
+
+class DuplicateItemsRequest(BaseModel):
+    item_ids: List[str]
+    offset_x: float = 32.0
+    offset_y: float = 32.0
 
 class BoardUpdate(BaseModel):
     title: Optional[str] = None
@@ -172,6 +181,8 @@ def get_board_detail(
                 "file_path": media.file_path,
                 "source_type": media.source_type,
                 "ai_analysis_policy": media.ai_analysis_policy,
+                "title": media.title,
+                "folder_name": media.folder_name or "All References",
                 "original_file_name": media.original_file_name,
                 "width": media.width,
                 "height": media.height,
@@ -318,6 +329,146 @@ def arrange_items(
 
     db.commit()
     return {"message": f"Arranged {len(items)} items with layout {layout_type}"}
+
+@router.post("/{board_id}/save-to-folder")
+def save_board_items_to_folder(
+    board_id: str,
+    payload: SaveToFolderRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """キャンバス上の全資料または選択した資料を一括でフォルダに保存する"""
+    board = db.query(Board).filter(Board.id == board_id).first()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    folder_name = (payload.folder_name or "All References").strip()
+    if folder_name and folder_name != "All References":
+        existing_folder = db.query(Folder).filter(
+            Folder.user_id == user.id, Folder.name == folder_name
+        ).first()
+        if not existing_folder:
+            new_folder = Folder(
+                name=folder_name,
+                color="#6366f1",
+                icon="folder",
+                user_id=user.id,
+            )
+            db.add(new_folder)
+            db.flush()
+
+    query = db.query(CanvasItem).filter(CanvasItem.board_id == board_id)
+    if payload.item_ids:
+        query = query.filter(CanvasItem.id.in_(payload.item_ids))
+    items = query.all()
+
+    media_ids = list({it.media_item_id for it in items if it.media_item_id})
+    if media_ids:
+        db.query(MediaItem).filter(
+            MediaItem.id.in_(media_ids),
+            MediaItem.user_id == user.id
+        ).update({MediaItem.folder_name: folder_name}, synchronize_session=False)
+        db.commit()
+
+    return {
+        "success": True,
+        "count": len(media_ids),
+        "folder_name": folder_name,
+        "media_ids": media_ids,
+    }
+
+@router.post("/{board_id}/items/duplicate")
+def duplicate_board_items(
+    board_id: str,
+    payload: DuplicateItemsRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """選択されたキャンバスアイテムを複製する"""
+    board = db.query(Board).filter(Board.id == board_id).first()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    if not payload.item_ids:
+        return {"items": []}
+
+    original_items = (
+        db.query(CanvasItem)
+        .options(joinedload(CanvasItem.media_item).joinedload(MediaItem.ai_analysis))
+        .filter(CanvasItem.board_id == board_id, CanvasItem.id.in_(payload.item_ids))
+        .all()
+    )
+
+    max_z = db.query(CanvasItem).filter(CanvasItem.board_id == board_id).count()
+
+    created_items = []
+    for idx, orig in enumerate(original_items):
+        new_item = CanvasItem(
+            board_id=board_id,
+            media_item_id=orig.media_item_id,
+            pos_x=orig.pos_x + payload.offset_x,
+            pos_y=orig.pos_y + payload.offset_y,
+            width=orig.width,
+            height=orig.height,
+            rotation=orig.rotation,
+            z_index=max_z + 1 + idx,
+            is_flipped_h=orig.is_flipped_h,
+            is_flipped_v=orig.is_flipped_v,
+            is_grayscale=orig.is_grayscale,
+            opacity=orig.opacity,
+            border_color=orig.border_color,
+            border_width=orig.border_width,
+            is_locked=False,
+            caption=orig.caption,
+        )
+        db.add(new_item)
+        db.flush()
+
+        media = orig.media_item
+        ai = media.ai_analysis if media and (media.source_type != "pixiv" or media.ai_analysis_policy == "allowed") else None
+        created_items.append({
+            "id": new_item.id,
+            "board_id": new_item.board_id,
+            "media_item_id": new_item.media_item_id,
+            "pos_x": new_item.pos_x,
+            "pos_y": new_item.pos_y,
+            "width": new_item.width,
+            "height": new_item.height,
+            "rotation": new_item.rotation,
+            "z_index": new_item.z_index,
+            "is_flipped_h": new_item.is_flipped_h,
+            "is_flipped_v": new_item.is_flipped_v,
+            "is_grayscale": new_item.is_grayscale,
+            "opacity": new_item.opacity,
+            "border_color": new_item.border_color,
+            "border_width": new_item.border_width,
+            "is_locked": new_item.is_locked,
+            "caption": new_item.caption,
+            "media": {
+                "id": media.id,
+                "file_path": media.file_path,
+                "source_type": media.source_type,
+                "ai_analysis_policy": media.ai_analysis_policy,
+                "title": media.title,
+                "folder_name": media.folder_name or "All References",
+                "original_file_name": media.original_file_name,
+                "width": media.width,
+                "height": media.height,
+                "aspect_ratio": media.aspect_ratio,
+            } if media else None,
+            "ai_analysis": {
+                "composition": ai.composition,
+                "lighting": ai.lighting,
+                "pose_anatomy": ai.pose_anatomy,
+                "costume_structure": ai.costume_structure,
+                "palette": ai.palette_json,
+                "tags": ai.tags_json,
+                "analysis_model": ai.analysis_model,
+            } if ai else None,
+        })
+
+    db.commit()
+    return {"items": created_items}
 
 @router.delete("/{board_id}/items/{item_id}")
 def delete_canvas_item(

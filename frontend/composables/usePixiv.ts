@@ -255,24 +255,51 @@ export function usePixiv() {
     if (!ids.length || !boardId) return false
     isImporting.value = true
     try {
-      // 複数作品ぶんの取り込みは bulk エンドポイントでまとめて行う
-      const res = await $fetch<{ count: number; errors: string[] }>(
-        api('/pixiv/stock/bulk'),
-        {
-          method: 'POST',
-          body: {
-            illust_ids: ids,
-            board_id: boardId,
-            pos_x: posX,
-            pos_y: posY,
-            folder_name: folderName || 'All References',
-          },
+      if (isConnected.value) {
+        // 複数作品ぶんの取り込みは bulk エンドポイントでまとめて行う
+        const res = await $fetch<{ count: number; errors: string[] }>(
+          api('/pixiv/stock/bulk'),
+          {
+            method: 'POST',
+            body: {
+              illust_ids: ids,
+              board_id: boardId,
+              pos_x: posX,
+              pos_y: posY,
+              folder_name: folderName || 'All References',
+            },
+          }
+        )
+        if (res.errors?.length) {
+          toast.warning('一部の作品は取得できませんでした', res.errors.slice(0, 2).join(' / '))
         }
-      )
-      if (res.errors?.length) {
-        toast.warning('一部の作品は取得できませんでした', res.errors.slice(0, 2).join(' / '))
+        return (res.count || 0) > 0
       }
-      return (res.count || 0) > 0
+
+      // デモ・未接続モードのフォールバック
+      let placedCount = 0
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i]
+        try {
+          const res = await $fetch<{ success: boolean; bookmark_id: string; canvas_item_id?: string }>(
+            api('/bookmarks/add'),
+            {
+              method: 'POST',
+              body: {
+                url: `https://www.pixiv.net/artworks/${id}`,
+                folder_name: folderName || 'All References',
+                board_id: boardId,
+                pos_x: typeof posX === 'number' ? posX + i * 360 : undefined,
+                pos_y: typeof posY === 'number' ? posY : undefined,
+              },
+            }
+          )
+          if (res?.success) placedCount++
+        } catch {
+          // continue
+        }
+      }
+      return placedCount > 0
     } catch (e: any) {
       toast.error(
         'キャンバスへの配置に失敗しました',

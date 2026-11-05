@@ -16,6 +16,7 @@ import {
   Redo2,
   Plus,
   Globe,
+  Folder,
   X,
 } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
@@ -29,6 +30,7 @@ const emit = defineEmits<{
   (e: 'open-instagram'): void
   (e: 'open-pixiv'): void
   (e: 'open-insight'): void
+  (e: 'open-save-modal'): void
 }>()
 
 const boardStore = useBoardStore()
@@ -132,6 +134,17 @@ function setTheme(theme: string) {
       >
         {{ boardStore.bookmarks.length }}
       </span>
+    </button>
+
+    <!-- 一括フォルダ保存 -->
+    <button
+      type="button"
+      class="shrink-0 whitespace-nowrap flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-ink hover:text-brand border border-canvas-border-strong bg-canvas-bg hover:bg-canvas-hover transition-colors"
+      title="キャンバス上の資料を一括でフォルダに保存"
+      @click="emit('open-save-modal')"
+    >
+      <Folder class="w-3.5 h-3.5 text-brand shrink-0" />
+      <span class="whitespace-nowrap">一括セーブ</span>
     </button>
 
     <!-- 2. 資料を追加 -->

@@ -28,7 +28,7 @@ from PIL import Image
 from app.core.config import settings
 from app.core.pixiv_tokens import decrypt_token, encrypt_token
 from app.core.database import get_db
-from app.models.models import Board, CanvasItem, MediaItem, PixivAccount, User
+from app.models.models import Board, CanvasItem, Folder, MediaItem, PixivAccount, User
 from app.routers.auth import GUEST_EMAIL, get_current_user
 from app.routers.media import perform_ai_analysis
 from app.services.pixiv_ai_policy import resolve_pixiv_ai_policy
@@ -632,7 +632,12 @@ async def _stock_one_illust(
         if existing:
             if existing.ai_analysis_policy != ai_policy:
                 existing.ai_analysis_policy = ai_policy
-                db.commit()
+            if folder_name and folder_name != "All References":
+                existing.folder_name = folder_name
+                f_exist = db.query(Folder).filter(Folder.user_id == user.id, Folder.name == folder_name).first()
+                if not f_exist:
+                    db.add(Folder(name=folder_name, color="#6366f1", icon="folder", user_id=user.id))
+            db.commit()
             entry = {"media_item_id": existing.id, "reused": True, "page_index": source_page_index}
             if board_id:
                 entry["canvas_item_id"] = _place_on_canvas(
@@ -659,6 +664,11 @@ async def _stock_one_illust(
         page_title = illust.get("title") or f"pixiv #{illust.get('id')}"
         if len(indexed_pages) > 1:
             page_title = f"{page_title} - p{source_page_index + 1}"
+
+        if folder_name and folder_name != "All References":
+            f_exist = db.query(Folder).filter(Folder.user_id == user.id, Folder.name == folder_name).first()
+            if not f_exist:
+                db.add(Folder(name=folder_name, color="#6366f1", icon="folder", user_id=user.id))
 
         media_item = MediaItem(
             user_id=user.id,
