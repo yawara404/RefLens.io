@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, onMounted, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import {
   Home,
   Plus,
@@ -71,7 +71,38 @@ const newFolderColor = ref('#6366f1')
 const folderQuery = ref('')
 const libraryFolderQuery = ref('')
 const libraryFolderScrollRef = ref<HTMLElement | null>(null)
+const isFolderPickerOpen = ref(false)
+const folderPickerSearchInputRef = ref<HTMLInputElement | null>(null)
+const libraryFolderMenuRef = ref<HTMLElement | null>(null)
 const selectedFolderColorFilter = ref<string | null>(null)
+
+function toggleFolderPicker() {
+  isFolderPickerOpen.value = !isFolderPickerOpen.value
+  if (isFolderPickerOpen.value) {
+    libraryFolderQuery.value = ''
+    nextTick(() => {
+      folderPickerSearchInputRef.value?.focus()
+    })
+  }
+}
+
+function handleFolderPickerClickOutside(e: MouseEvent) {
+  if (libraryFolderMenuRef.value && !libraryFolderMenuRef.value.contains(e.target as Node)) {
+    isFolderPickerOpen.value = false
+  }
+}
+
+watch(isFolderPickerOpen, (open) => {
+  if (open) {
+    document.addEventListener('click', handleFolderPickerClickOutside)
+  } else {
+    document.removeEventListener('click', handleFolderPickerClickOutside)
+  }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleFolderPickerClickOutside)
+})
 
 const FOLDER_COLORS = [
   { hex: '#6366f1', label: 'インディゴ' },
@@ -478,6 +509,7 @@ function selectFirstMatchingLibraryFolder() {
   } else {
     selectedFolder.value = first.name
   }
+  isFolderPickerOpen.value = false
 }
 
 function scrollLibraryFolders(delta: number) {
@@ -1736,11 +1768,32 @@ onMounted(async () => {
               </div>
 
               <div class="flex items-center gap-2 shrink-0">
+                <!-- フォルダ絞り込みドロップダウン（ツールバー） -->
+                <div class="relative flex items-center">
+                  <FolderOpen class="absolute left-2.5 w-3.5 h-3.5 text-brand pointer-events-none" />
+                  <select
+                    :value="selectedFolder || ''"
+                    class="appearance-none bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong rounded-xl pl-8 pr-7 py-1.5 text-xs font-semibold text-ink focus:outline-none focus:border-brand cursor-pointer transition-colors shadow-2xs max-w-[160px] sm:max-w-[210px] truncate"
+                    aria-label="フォルダで絞り込み"
+                    @change="selectedFolder = ($event.target as HTMLSelectElement).value || null"
+                  >
+                    <option value="">すべてのフォルダ ({{ boardStore.bookmarks.length }})</option>
+                    <option
+                      v-for="folder in visibleFolders.filter(f => f.name !== 'All References')"
+                      :key="folder.name"
+                      :value="folder.name"
+                    >
+                      {{ folder.name }} ({{ getFolderBookmarks(folder).length }})
+                    </option>
+                  </select>
+                  <ChevronDown class="absolute right-2 w-3.5 h-3.5 text-ink-muted pointer-events-none" />
+                </div>
+
                 <div class="relative flex items-center">
                   <ArrowUpDown class="absolute left-2.5 w-3.5 h-3.5 text-ink-muted pointer-events-none" />
                   <select
                     v-model="sortOrder"
-                    class="appearance-none bg-canvas-bg border border-canvas-border-strong rounded-xl pl-7 pr-6 py-1.5 text-xs font-medium text-ink focus:outline-none focus:border-brand cursor-pointer"
+                    class="appearance-none bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong rounded-xl pl-7 pr-6 py-1.5 text-xs font-medium text-ink focus:outline-none focus:border-brand cursor-pointer transition-colors shadow-2xs"
                     aria-label="資料の並び順"
                   >
                     <option v-for="opt in SORT_OPTIONS" :key="opt.id" :value="opt.id">
@@ -1777,28 +1830,99 @@ onMounted(async () => {
               </div>
             </div>
 
-            <!-- フォルダ検索 ＆ 横スクロールクイック切替バー -->
+            <!-- フォルダクイック絞り込みバー（検索付きポップオーバー ＋ 横スクロールピル） -->
             <div class="flex items-center gap-2 pt-1">
-              <!-- フォルダ内インライン検索 -->
-              <div class="relative shrink-0 w-40 sm:w-48">
-                <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-muted pointer-events-none" />
-                <input
-                  v-model="libraryFolderQuery"
-                  type="text"
-                  placeholder="フォルダ検索..."
-                  class="w-full pl-8 pr-7 py-1 text-xs bg-canvas-bg border border-canvas-border-strong rounded-xl text-ink placeholder:text-ink-muted focus:outline-none focus:border-brand transition-colors"
-                  @keydown.enter.prevent="selectFirstMatchingLibraryFolder"
-                />
+              <!-- 検索付きフォルダ選択ポップオーバーボタン -->
+              <div ref="libraryFolderMenuRef" class="relative shrink-0">
                 <button
-                  v-if="libraryFolderQuery"
                   type="button"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-ink-muted hover:text-ink transition-colors"
-                  title="検索をクリア"
-                  aria-label="フォルダ検索をクリア"
-                  @click="libraryFolderQuery = ''"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all shadow-2xs cursor-pointer"
+                  :class="isFolderPickerOpen
+                    ? 'bg-brand text-brand-fg border-brand ring-2 ring-brand/30'
+                    : selectedFolder
+                      ? 'bg-brand-soft text-brand border-brand/50 hover:bg-brand-soft/80'
+                      : 'bg-canvas-bg text-ink border-canvas-border-strong hover:bg-canvas-hover'"
+                  aria-label="フォルダを検索して選択"
+                  :aria-expanded="isFolderPickerOpen"
+                  @click="toggleFolderPicker"
                 >
-                  <X class="w-3 h-3" />
+                  <FolderOpen class="w-3.5 h-3.5 shrink-0" />
+                  <span class="max-w-[130px] truncate">{{ selectedFolder ? selectedFolder : 'フォルダ検索' }}</span>
+                  <ChevronDown class="w-3.5 h-3.5 shrink-0 transition-transform" :class="{ 'rotate-180': isFolderPickerOpen }" />
                 </button>
+
+                <!-- ポップオーバーメニュー -->
+                <div
+                  v-if="isFolderPickerOpen"
+                  class="absolute left-0 top-full mt-1.5 w-64 max-h-80 bg-canvas-panel border border-canvas-border-strong rounded-2xl shadow-xl z-30 p-2.5 flex flex-col gap-2"
+                  @click.stop
+                >
+                  <!-- 検索入力 -->
+                  <div class="relative">
+                    <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-muted pointer-events-none" />
+                    <input
+                      ref="folderPickerSearchInputRef"
+                      v-model="libraryFolderQuery"
+                      type="text"
+                      placeholder="フォルダを検索..."
+                      class="w-full pl-8 pr-7 py-1.5 text-xs bg-canvas-bg border border-canvas-border rounded-xl text-ink placeholder:text-ink-muted focus:outline-none focus:border-brand"
+                      @keydown.enter.prevent="selectFirstMatchingLibraryFolder"
+                    />
+                    <button
+                      v-if="libraryFolderQuery"
+                      type="button"
+                      class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-ink-muted hover:text-ink"
+                      title="クリア"
+                      @click="libraryFolderQuery = ''"
+                    >
+                      <X class="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <!-- フォルダリスト -->
+                  <div class="overflow-y-auto max-h-56 space-y-0.5 pr-0.5">
+                    <button
+                      type="button"
+                      class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-colors"
+                      :class="selectedFolder === null
+                        ? 'bg-brand text-brand-fg font-bold'
+                        : 'text-ink hover:bg-canvas-hover font-medium'"
+                      @click="selectedFolder = null; isFolderPickerOpen = false"
+                    >
+                      <span class="flex items-center gap-2">
+                        <FolderOpen class="w-3.5 h-3.5" />
+                        <span>すべての資料</span>
+                      </span>
+                      <span class="text-[10px] font-mono opacity-80">({{ boardStore.bookmarks.length }})</span>
+                    </button>
+
+                    <div class="my-1 border-t border-canvas-border" />
+
+                    <button
+                      v-for="folder in libraryVisibleFolders.filter(f => f.name !== 'All References')"
+                      :key="folder.name"
+                      type="button"
+                      class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-colors"
+                      :class="selectedFolder === folder.name
+                        ? 'bg-brand text-brand-fg font-bold'
+                        : 'text-ink hover:bg-canvas-hover font-medium'"
+                      @click="selectedFolder = folder.name; isFolderPickerOpen = false"
+                    >
+                      <span class="flex items-center gap-2 truncate">
+                        <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="{ backgroundColor: folder.color || '#6366f1' }" />
+                        <span class="truncate">{{ folder.name }}</span>
+                      </span>
+                      <span class="text-[10px] font-mono opacity-80 shrink-0 ml-2">({{ getFolderBookmarks(folder).length }})</span>
+                    </button>
+
+                    <div
+                      v-if="libraryVisibleFolders.filter(f => f.name !== 'All References').length === 0"
+                      class="text-xs text-ink-muted text-center py-3"
+                    >
+                      該当するフォルダがありません
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <!-- スクロール左ボタン -->
@@ -1832,12 +1956,12 @@ onMounted(async () => {
 
                 <!-- 各フォルダ -->
                 <button
-                  v-for="folder in libraryVisibleFolders.filter(f => f.name !== 'All References')"
+                  v-for="folder in visibleFolders.filter(f => f.name !== 'All References')"
                   :key="folder.name"
                   type="button"
                   class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors flex items-center gap-1.5 shrink-0"
                   :class="selectedFolder === folder.name
-                    ? 'bg-brand text-brand-fg border-brand shadow-sm'
+                    ? 'bg-brand text-brand-fg border-brand shadow-sm ring-1 ring-brand'
                     : 'bg-canvas-bg text-ink border-canvas-border hover:bg-canvas-hover'"
                   @click="selectedFolder = folder.name"
                 >
@@ -1850,21 +1974,6 @@ onMounted(async () => {
                     {{ getFolderBookmarks(folder).length }}
                   </span>
                 </button>
-
-                <!-- 検索結果が空の場合 -->
-                <div
-                  v-if="libraryFolderQuery && libraryVisibleFolders.filter(f => f.name !== 'All References').length === 0"
-                  class="text-xs text-ink-muted whitespace-nowrap px-2 py-1 flex items-center gap-1.5"
-                >
-                  <span>一致するフォルダがありません</span>
-                  <button
-                    type="button"
-                    class="text-brand hover:underline font-semibold"
-                    @click="libraryFolderQuery = ''"
-                  >
-                    リセット
-                  </button>
-                </div>
               </div>
 
               <!-- スクロール右ボタン -->
@@ -1876,6 +1985,18 @@ onMounted(async () => {
                 @click="scrollLibraryFolders(160)"
               >
                 <ChevronRight class="w-3.5 h-3.5" />
+              </button>
+
+              <!-- 絞り込み解除ボタン -->
+              <button
+                v-if="selectedFolder"
+                type="button"
+                class="px-2 py-1 rounded-full text-xs font-semibold text-ink-muted hover:text-ink bg-canvas-bg hover:bg-canvas-hover border border-canvas-border flex items-center gap-1 transition-colors shrink-0"
+                title="フォルダ絞り込みを解除"
+                @click="selectedFolder = null"
+              >
+                <X class="w-3 h-3" />
+                <span>解除</span>
               </button>
             </div>
           </section>
