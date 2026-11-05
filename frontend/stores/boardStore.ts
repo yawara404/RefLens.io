@@ -35,6 +35,10 @@ export const useBoardStore = defineStore('board', {
 
     /** fetchBookmarks の発行順。古い応答が新しい結果を上書きしないようにする */
     bookmarkRequestSeq: 0,
+
+    // キャンバスからブックマークブラウザへのドラッグドロップ連携
+    dragOverFolderName: null as string | null,
+    isCanvasDraggingToBrowser: false,
   }),
 
   getters: {

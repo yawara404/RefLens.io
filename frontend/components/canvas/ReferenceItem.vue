@@ -17,6 +17,7 @@ const props = defineProps<{
   item: CanvasItem
   isSelected: boolean
   isDimmed: boolean
+  isDragging?: boolean
   zoom: number
 }>()
 
@@ -41,7 +42,7 @@ const itemStyle = computed(() => ({
   width: `${props.item.width}px`,
   height: `${props.item.height}px`,
   zIndex: props.item.z_index,
-  opacity: props.isDimmed ? 0.22 : props.item.opacity,
+  opacity: props.isDragging ? 0.32 : (props.isDimmed ? 0.22 : props.item.opacity),
 }))
 
 const imageStyle = computed(() => ({

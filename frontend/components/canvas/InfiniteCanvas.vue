@@ -24,6 +24,7 @@ import {
   AlignHorizontalJustifyCenter,
   LayoutGrid,
   Folder,
+  Layers,
 } from 'lucide-vue-next'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import type { CanvasItem } from '~/types'
@@ -31,6 +32,7 @@ import { useBoardStore } from '~/stores/boardStore'
 import { useHelpStore } from '~/stores/helpStore'
 import { useToast } from '~/composables/useToast'
 import { useTheme } from '~/composables/useTheme'
+import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useCanvasTransform } from '~/composables/useCanvasTransform'
 import { useImageProcessor } from '~/composables/useImageProcessor'
 import { usePixiv } from '~/composables/usePixiv'
@@ -79,6 +81,39 @@ const dragOffset = ref<{ id: string; offsetX: number; offsetY: number }[]>([])
 const pendingSingleSelectId = ref<string | null>(null)
 let dragDistance = 0
 let dragStartClient = { x: 0, y: 0 }
+
+const { resolveMediaUrl } = useMediaUrl()
+
+function formatFolderLabel(name?: string | null): string {
+  if (!name || name === 'All References') return 'すべての資料'
+  return name
+}
+
+// キャンバスからブックマークブラウザ・フォルダへのドラッグ＆ドロップ連携
+const hoverTargetFolder = ref<string | null>(null)
+const floatingCardScreenPos = ref({ x: 0, y: 0 })
+let dragGrabOffset = { x: 0, y: 0 }
+const initialDragPositions = new Map<string, { x: number; y: number }>()
+
+const draggedItemCount = computed(() => {
+  if (!draggingItem.value) return 0
+  if (boardStore.selectedItemIds.includes(draggingItem.value.id)) {
+    return boardStore.selectedItemIds.length
+  }
+  return 1
+})
+
+const floatingCardWidth = computed(() => {
+  if (!draggingItem.value) return 220
+  const rawW = draggingItem.value.width * zoom.value
+  return Math.round(Math.max(130, Math.min(360, rawW)))
+})
+
+const floatingCardHeight = computed(() => {
+  if (!draggingItem.value) return 220
+  const ratio = (draggingItem.value.width / draggingItem.value.height) || 1
+  return Math.round(floatingCardWidth.value / ratio)
+})
 
 const resizingItem = ref<CanvasItem | null>(null)
 const resizeDirection = ref<string>('')
@@ -262,6 +297,28 @@ function onPointerMove(e: PointerEvent) {
       pendingSingleSelectId.value = null
     }
 
+    // フローティングカードのスクリーン座標追従
+    floatingCardScreenPos.value = {
+      x: e.clientX - dragGrabOffset.x,
+      y: e.clientY - dragGrabOffset.y,
+    }
+
+    // ブックマークブラウザ / フォルダのホバー判定
+    const elUnderCursor = document.elementFromPoint(e.clientX, e.clientY)
+    const browserEl = elUnderCursor?.closest('[data-asset-file-browser="true"]')
+    const folderEl = elUnderCursor?.closest('[data-folder-name]')
+
+    if (browserEl) {
+      boardStore.isCanvasDraggingToBrowser = true
+      const folderName = folderEl?.getAttribute('data-folder-name') || boardStore.selectedFolder || 'All References'
+      boardStore.dragOverFolderName = folderName
+      hoverTargetFolder.value = folderName
+    } else {
+      boardStore.isCanvasDraggingToBrowser = false
+      boardStore.dragOverFolderName = null
+      hoverTargetFolder.value = null
+    }
+
     const worldMouse = screenToWorld(e.clientX, e.clientY, rect)
     for (const offset of dragOffset.value) {
       boardStore.updateItem(offset.id, {
@@ -358,6 +415,9 @@ function onPointerUp(e?: PointerEvent) {
 
   const wasPanning = isPanning.value
   const wasTransformingItem = Boolean(draggingItem.value || resizingItem.value || rotatingItem.value)
+  const isDroppedOnFolder = Boolean(draggingItem.value && dragDistance > 8 && hoverTargetFolder.value)
+  const targetFolder = hoverTargetFolder.value
+  const targetItem = draggingItem.value
 
   // 状態解除を最優先で実行し、例外時でも「持ったまま離せない」状態にならないようにする
   isPanning.value = false
@@ -365,11 +425,34 @@ function onPointerUp(e?: PointerEvent) {
   resizingItem.value = null
   rotatingItem.value = null
   isSelectingBox.value = false
+  hoverTargetFolder.value = null
+  boardStore.isCanvasDraggingToBrowser = false
+  boardStore.dragOverFolderName = null
 
   if (pendingSingleSelectId.value && dragDistance <= 4) {
     boardStore.selectItem(pendingSingleSelectId.value, false)
   }
   pendingSingleSelectId.value = null
+
+  // フォルダまたはブックマークブラウザへドロップした場合の処理
+  if (isDroppedOnFolder && targetFolder && targetItem) {
+    const targetIds = boardStore.selectedItemIds.length
+      ? [...boardStore.selectedItemIds]
+      : [targetItem.id]
+
+    // キャンバス上の位置はドラッグ開始前の場所に戻す（ブラウザの奥に消えないようにする）
+    for (const [id, pos] of initialDragPositions.entries()) {
+      boardStore.updateItem(id, { pos_x: pos.x, pos_y: pos.y }, false)
+    }
+    initialDragPositions.clear()
+
+    // フォルダへ保存・移動
+    boardStore.saveCanvasItemsToFolder(targetIds, targetFolder)
+    triggerAutoSave()
+    return
+  }
+
+  initialDragPositions.clear()
 
   if (wasTransformingItem) {
     boardStore.recordHistory()
@@ -423,11 +506,32 @@ function handleStartDrag(evt: PointerEvent, item: CanvasItem) {
   }
 
   const targets = boardStore.selectedItems.filter(it => !it.is_locked)
-  dragOffset.value = (targets.length ? targets : [item]).map(t => ({
+  const dragTargets = targets.length ? targets : [item]
+  dragOffset.value = dragTargets.map(t => ({
     id: t.id,
     offsetX: t.pos_x - worldMouse.x,
     offsetY: t.pos_y - worldMouse.y,
   }))
+
+  // ドラッグ開始時の位置を記録（ブラウザ上にドロップした際、元の位置を維持してフォルダだけ更新するため）
+  initialDragPositions.clear()
+  for (const t of dragTargets) {
+    initialDragPositions.set(t.id, { x: t.pos_x, y: t.pos_y })
+  }
+
+  // スクリーン上のカード位置を算出してオフセットを保持
+  const itemScreenPos = worldToScreen(item.pos_x, item.pos_y, rect)
+  dragGrabOffset = {
+    x: evt.clientX - itemScreenPos.x,
+    y: evt.clientY - itemScreenPos.y,
+  }
+  floatingCardScreenPos.value = {
+    x: itemScreenPos.x,
+    y: itemScreenPos.y,
+  }
+  hoverTargetFolder.value = null
+  boardStore.isCanvasDraggingToBrowser = false
+  boardStore.dragOverFolderName = null
 }
 
 function handleStartResize(evt: PointerEvent, item: CanvasItem, direction: string) {
@@ -759,6 +863,12 @@ function handleResetZoom() {
   triggerAutoSave()
 }
 
+function isItemBeingDragged(itemId: string): boolean {
+  if (!draggingItem.value || dragDistance <= 8) return false
+  if (draggingItem.value.id === itemId) return true
+  return boardStore.selectedItemIds.includes(itemId)
+}
+
 defineExpose({ fitView, resetView, focusItem })
 
 // ---------------------------------------------------------------
@@ -831,6 +941,7 @@ watch(() => props.boardId, () => {
         :item="item"
         :is-selected="boardStore.selectedItemIds.includes(item.id)"
         :is-dimmed="!boardStore.filteredItemIds.includes(item.id)"
+        :is-dragging="isItemBeingDragged(item.id)"
         :zoom="zoom"
         @select="handleItemSelect(item, $event)"
         @start-drag="handleStartDrag"
@@ -848,6 +959,55 @@ watch(() => props.boardId, () => {
         :style="selectionBoxStyle"
       />
     </div>
+
+    <!-- トップレイヤードラッグプレビュー（ブックマークブラウザやヘッダーより上の最前面レイヤーで追従） -->
+    <Teleport to="body">
+      <div
+        v-if="draggingItem && dragDistance > 8"
+        class="fixed pointer-events-none z-[9999] select-none"
+        :style="{
+          top: 0,
+          left: 0,
+          transform: `translate3d(${floatingCardScreenPos.x}px, ${floatingCardScreenPos.y}px, 0px)`,
+          width: `${floatingCardWidth}px`,
+          height: `${floatingCardHeight}px`,
+        }"
+      >
+        <div
+          class="relative w-full h-full rounded-2xl overflow-hidden bg-canvas-card flex flex-col border-2 transition-all duration-75"
+          :class="hoverTargetFolder
+            ? 'border-brand ring-4 ring-brand/50 shadow-pop scale-95'
+            : 'border-brand shadow-2xl ring-2 ring-brand/25'"
+          :style="{
+            transform: `rotate(${draggingItem.rotation || 0}deg)`,
+          }"
+        >
+          <img
+            :src="resolveMediaUrl(draggingItem.media?.file_path)"
+            :alt="draggingItem.caption || 'Dragged reference'"
+            class="w-full h-full object-cover"
+          />
+
+          <!-- 複数選択時の枚数バッジ -->
+          <span
+            v-if="draggedItemCount > 1"
+            class="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-brand text-brand-fg text-[11px] font-mono font-bold shadow-md flex items-center gap-1"
+          >
+            <Layers class="w-3 h-3" />
+            <span>{{ draggedItemCount }}</span>
+          </span>
+
+          <!-- フォルダ移動インジケーター（ブラウザ/フォルダホバー時に表示） -->
+          <div
+            v-if="hoverTargetFolder"
+            class="absolute inset-x-0 bottom-0 bg-brand text-brand-fg px-2.5 py-1.5 text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg animate-slide-up"
+          >
+            <Folder class="w-3.5 h-3.5 shrink-0" />
+            <span class="truncate">「{{ formatFolderLabel(hoverTargetFolder) }}」にドロップ</span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- 右クリックメニュー -->
     <CanvasItemMenu

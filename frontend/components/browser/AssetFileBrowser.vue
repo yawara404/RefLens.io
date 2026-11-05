@@ -394,7 +394,9 @@ const SOURCE_PILLS = [
 
 <template>
   <aside
-    class="fixed inset-x-0 top-14 bottom-0 z-40 h-[calc(100dvh-3.5rem)] w-full overflow-hidden bg-canvas-panel border-t border-canvas-border md:relative md:inset-auto md:z-30 md:h-full md:w-[var(--browser-w)] md:max-w-[55vw] md:border-t-0 shrink-0 flex flex-col border-r border-canvas-border select-none shadow-pop md:shadow-none"
+    data-asset-file-browser="true"
+    class="fixed inset-x-0 top-14 bottom-0 z-40 h-[calc(100dvh-3.5rem)] w-full overflow-hidden bg-canvas-panel border-t border-canvas-border md:relative md:inset-auto md:z-30 md:h-full md:w-[var(--browser-w)] md:max-w-[55vw] md:border-t-0 shrink-0 flex flex-col border-r border-canvas-border select-none shadow-pop md:shadow-none transition-all"
+    :class="boardStore.isCanvasDraggingToBrowser ? 'ring-2 ring-brand/60 shadow-lg' : ''"
     :style="{
       '--browser-w': `${browserWidth}px`,
       maxWidth: props.insightOpen
@@ -571,13 +573,14 @@ const SOURCE_PILLS = [
       <button
         v-for="folder in visibleFolders"
         :key="folder.name"
+        :data-folder-name="folder.name"
         type="button"
         class="px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 border shrink-0"
         :class="[
           !isPixivFeedMode && boardStore.selectedFolder === folder.name
             ? 'bg-brand text-brand-fg border-brand font-bold'
             : 'bg-canvas-card border-canvas-border-strong text-ink hover:bg-canvas-hover',
-          dragOverFolderTarget === folder.name ? 'ring-2 ring-brand border-brand bg-brand-soft font-bold scale-105' : '',
+          (dragOverFolderTarget === folder.name || boardStore.dragOverFolderName === folder.name) ? 'ring-2 ring-brand border-brand bg-brand-soft font-bold scale-105 shadow-sm' : '',
         ]"
         @dragover="onFolderBookmarkDragOver(folder, $event)"
         @dragleave="onFolderBookmarkDragLeave(folder)"
@@ -674,6 +677,15 @@ const SOURCE_PILLS = [
 
     <!-- 4. メインスクロール領域 -->
     <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3">
+      <!-- キャンバスからのドラッグ移動ガイドバナー -->
+      <div
+        v-if="boardStore.isCanvasDraggingToBrowser"
+        class="mb-3 p-2.5 rounded-xl bg-brand text-brand-fg font-bold text-xs flex items-center justify-center gap-2 shadow-sm animate-fade-in"
+      >
+        <Folder class="w-4 h-4 shrink-0 animate-bounce" />
+        <span class="truncate">「{{ formatFolderLabel(boardStore.dragOverFolderName || boardStore.selectedFolder) }}」にドロップして移動</span>
+      </div>
+
       <!-- ==================== フォルダタブ（ダッシュボード） ==================== -->
       <div v-if="activeTab === 'folders'" class="space-y-3">
         <div class="flex items-center justify-between gap-2">
@@ -722,13 +734,14 @@ const SOURCE_PILLS = [
           <button
             v-for="folder in visibleFolders"
             :key="folder.name"
+            :data-folder-name="folder.name"
             type="button"
             class="group text-left rounded-xl border bg-canvas-card overflow-hidden transition-all hover:border-brand"
             :class="[
               !isPixivFeedMode && boardStore.selectedFolder === folder.name
                 ? 'border-brand ring-2 ring-brand/25'
                 : 'border-canvas-border',
-              dragOverFolderTarget === folder.name ? 'ring-2 ring-brand border-brand bg-brand-soft/40 scale-[1.02]' : '',
+              (dragOverFolderTarget === folder.name || boardStore.dragOverFolderName === folder.name) ? 'ring-2 ring-brand border-brand bg-brand-soft/60 scale-[1.03] shadow-md' : '',
             ]"
             @dragover="onFolderBookmarkDragOver(folder, $event)"
             @dragleave="onFolderBookmarkDragLeave(folder)"
