@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import {
   Home,
   Plus,
@@ -125,6 +125,28 @@ const SORT_OPTIONS: { id: SortOrder; label: string }[] = [
   { id: 'author', label: '作者名順' },
 ]
 const sortOrder = ref<SortOrder>('newest')
+
+type FolderSortOrder =
+  | 'custom'
+  | 'name_asc'
+  | 'name_desc'
+  | 'count_desc'
+  | 'count_asc'
+  | 'newest'
+  | 'color'
+
+const FOLDER_SORT_OPTIONS: { id: FolderSortOrder; label: string }[] = [
+  { id: 'custom', label: 'カスタム順' },
+  { id: 'name_asc', label: '名前順 (昇順)' },
+  { id: 'name_desc', label: '名前順 (降順)' },
+  { id: 'count_desc', label: '資料が多い順' },
+  { id: 'count_asc', label: '資料が少ない順' },
+  { id: 'newest', label: '最近追加順' },
+  { id: 'color', label: 'カラー順' },
+]
+
+const FOLDER_SORT_KEY = 'reflens-folder-sort-order'
+const folderSortOrder = ref<FolderSortOrder>('custom')
 
 function hexToRgb(hex: string): [number, number, number] | null {
   const clean = (hex || '').trim().replace(/^#/, '')
@@ -359,6 +381,55 @@ const recentBookmarks = computed(() => {
   return [...boardStore.bookmarks].sort((a, b) => addedAt(b) - addedAt(a)).slice(0, 6)
 })
 
+function sortFolderList(list: FolderItem[], sortMode: FolderSortOrder): FolderItem[] {
+  const fixed = list.filter(f => !f.id)
+  const custom = list.filter(f => !!f.id)
+
+  const rank = (name: string) => {
+    const index = folderOrder.value.indexOf(name)
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index
+  }
+
+  const latestBookmarkTime = (folder: FolderItem) => {
+    const bms = getFolderBookmarks(folder)
+    if (!bms.length) return 0
+    return Math.max(...bms.map(b => (b.created_at ? Date.parse(b.created_at) : 0)))
+  }
+
+  custom.sort((a, b) => {
+    if (sortMode === 'custom') {
+      return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ja')
+    }
+    if (sortMode === 'name_asc') {
+      return a.name.localeCompare(b.name, 'ja')
+    }
+    if (sortMode === 'name_desc') {
+      return b.name.localeCompare(a.name, 'ja')
+    }
+    if (sortMode === 'count_desc') {
+      const diff = getFolderBookmarks(b).length - getFolderBookmarks(a).length
+      return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ja')
+    }
+    if (sortMode === 'count_asc') {
+      const diff = getFolderBookmarks(a).length - getFolderBookmarks(b).length
+      return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ja')
+    }
+    if (sortMode === 'newest') {
+      const diff = latestBookmarkTime(b) - latestBookmarkTime(a)
+      return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ja')
+    }
+    if (sortMode === 'color') {
+      const colA = (a.color || '#6366f1').toLowerCase()
+      const colB = (b.color || '#6366f1').toLowerCase()
+      if (colA !== colB) return colA.localeCompare(colB)
+      return a.name.localeCompare(b.name, 'ja')
+    }
+    return 0
+  })
+
+  return [...fixed, ...custom]
+}
+
 const visibleFolders = computed<FolderItem[]>(() => {
   const q = folderQuery.value.toLowerCase().trim()
   const list = boardStore.folders.filter(f => {
@@ -379,17 +450,7 @@ const visibleFolders = computed<FolderItem[]>(() => {
     return label.toLowerCase().includes(q)
   })
 
-  const rank = (name: string) => {
-    const index = folderOrder.value.indexOf(name)
-    return index === -1 ? Number.MAX_SAFE_INTEGER : index
-  }
-
-  const fixed = list.filter(f => !f.id)
-  const custom = list
-    .filter(f => !!f.id)
-    .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ja'))
-
-  return [...fixed, ...custom]
+  return sortFolderList(list, folderSortOrder.value)
 })
 
 /** ライブラリ用のフォルダ一覧（libraryFolderQuery でリアルタイム絞り込み） */
@@ -405,17 +466,7 @@ const libraryVisibleFolders = computed<FolderItem[]>(() => {
     return label.toLowerCase().includes(q)
   })
 
-  const rank = (name: string) => {
-    const index = folderOrder.value.indexOf(name)
-    return index === -1 ? Number.MAX_SAFE_INTEGER : index
-  }
-
-  const fixed = list.filter(f => !f.id)
-  const custom = list
-    .filter(f => !!f.id)
-    .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ja'))
-
-  return [...fixed, ...custom]
+  return sortFolderList(list, folderSortOrder.value)
 })
 
 function selectFirstMatchingLibraryFolder() {
@@ -551,6 +602,29 @@ function restoreFolderOrder() {
   }
 }
 
+function persistFolderSortOrder() {
+  try {
+    window.localStorage.setItem(FOLDER_SORT_KEY, folderSortOrder.value)
+  } catch {
+    /* localStorage が使えない環境ではその場の並びだけ反映する */
+  }
+}
+
+function restoreFolderSortOrder() {
+  try {
+    const raw = window.localStorage.getItem(FOLDER_SORT_KEY) as FolderSortOrder | null
+    if (raw && FOLDER_SORT_OPTIONS.some(o => o.id === raw)) {
+      folderSortOrder.value = raw
+    }
+  } catch {
+    /* 壊れた値は無視して既定（custom）のまま表示する */
+  }
+}
+
+watch(folderSortOrder, () => {
+  persistFolderSortOrder()
+})
+
 function resetFolderDrag() {
   draggingFolder.value = null
   dragOverFolder.value = null
@@ -584,6 +658,11 @@ function onFolderDrop(target: FolderItem) {
   resetFolderDrag()
   if (!source || source === target.name || !isCustomFolder(target)) return
 
+  // 手動で並び替えたときは、カスタム順に切り替えて反映する
+  if (folderSortOrder.value !== 'custom') {
+    folderSortOrder.value = 'custom'
+  }
+
   // カスタムコレクションの現在の並び（保存済み順 → 未保存分は名前順）を作り、
   // ドラッグ元をドロップ先の位置へ差し込む。
   const names = boardStore.folders.filter(f => !!f.id).map(f => f.name)
@@ -603,6 +682,9 @@ function onFolderDrop(target: FolderItem) {
 
 function moveFolderByKey(folder: FolderItem, delta: -1 | 1) {
   if (!isCustomFolder(folder)) return
+  if (folderSortOrder.value !== 'custom') {
+    folderSortOrder.value = 'custom'
+  }
   const names = boardStore.folders.filter(f => !!f.id).map(f => f.name)
   const order = [
     ...folderOrder.value.filter(name => names.includes(name)),
@@ -724,6 +806,7 @@ async function handleDeleteBookmark(item: BookmarkItem) {
 
 onMounted(async () => {
   restoreFolderOrder()
+  restoreFolderSortOrder()
   await Promise.all([boardStore.fetchBookmarks(), boardStore.fetchFolders()])
   // サイドバーの「キャンバスを開く」リンク用に最初のボードをロードしておく
   await boardStore.loadFirstBoard()
@@ -835,6 +918,23 @@ onMounted(async () => {
             </button>
           </div>
 
+          <!-- フォルダ並び替えドロップダウン -->
+          <div class="shrink-0 px-1">
+            <div class="relative flex items-center">
+              <ArrowUpDown class="absolute left-2.5 w-3 h-3 text-ink-muted pointer-events-none" />
+              <select
+                v-model="folderSortOrder"
+                class="w-full appearance-none bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong rounded-xl pl-7 pr-6 py-1.5 text-[11px] font-medium text-ink focus:outline-none focus:border-brand cursor-pointer transition-colors shadow-2xs"
+                aria-label="フォルダの並び順"
+              >
+                <option v-for="opt in FOLDER_SORT_OPTIONS" :key="opt.id" :value="opt.id">
+                  {{ opt.label }}
+                </option>
+              </select>
+              <ChevronDown class="absolute right-2 w-3 h-3 text-ink-muted pointer-events-none" />
+            </div>
+          </div>
+
           <!-- 新規フォルダ作成フォーム -->
           <form
             v-if="showNewFolder"
@@ -914,7 +1014,7 @@ onMounted(async () => {
               role="button"
               tabindex="0"
               :draggable="isCustomFolder(folder)"
-              :title="isCustomFolder(folder) ? `${folder.name}（ドラッグまたは Alt+↑↓ で並び替え）` : folder.name"
+              :title="isCustomFolder(folder) ? (folderSortOrder === 'custom' ? `${folder.name}（ドラッグまたは Alt+↑↓ で並び替え）` : `${folder.name}（ドラッグでカスタム順へ並び替え）`) : folder.name"
               @click="selectFolder(folder)"
               @keydown.enter.prevent="selectFolder(folder)"
               @keydown.space.prevent="selectFolder(folder)"
