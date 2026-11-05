@@ -43,10 +43,42 @@ export default defineNuxtConfig({
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         {
           name: 'description',
-          content: 'PureRef-inspired infinite reference canvas powered by Multimodal AI visual anatomy analysis & pixiv integration.'
-        }
+          content: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。'
+        },
+        { name: 'robots', content: 'index, follow, max-image-preview:large' },
+        { name: 'theme-color', content: '#4338ca' },
+
+        // OGP
+        { property: 'og:site_name', content: 'RefLens.io' },
+        { property: 'og:type', content: 'website' },
+        { property: 'og:url', content: 'https://art.wawa-app.me/RefLens.io/' },
+        { property: 'og:locale', content: 'ja_JP' },
+        { property: 'og:title', content: 'RefLens.io - Smart Infinite Canvas for Artists' },
+        {
+          property: 'og:description',
+          content: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。'
+        },
+        { property: 'og:image', content: 'https://art.wawa-app.me/RefLens.io/favicon-card.png' },
+        { property: 'og:image:type', content: 'image/png' },
+        { property: 'og:image:width', content: '512' },
+        { property: 'og:image:height', content: '512' },
+        { property: 'og:image:alt', content: 'RefLens.io コンパスマーク アイコン' },
+
+        // Twitter Card
+        { name: 'twitter:card', content: 'summary' },
+        { name: 'twitter:title', content: 'RefLens.io - Smart Infinite Canvas for Artists' },
+        {
+          name: 'twitter:description',
+          content: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。'
+        },
+        { name: 'twitter:image', content: 'https://art.wawa-app.me/RefLens.io/favicon-card.png' },
+        { name: 'twitter:image:alt', content: 'RefLens.io コンパスマーク アイコン' },
       ],
       link: [
+        { rel: 'canonical', href: 'https://art.wawa-app.me/RefLens.io/' },
+        { rel: 'icon', type: 'image/svg+xml', href: `${appBase}favicon.svg` },
+        { rel: 'icon', type: 'image/x-icon', href: `${appBase}favicon.ico` },
+        { rel: 'apple-touch-icon', href: `${appBase}favicon-card.png` },
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
         { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap' }
