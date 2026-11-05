@@ -424,6 +424,26 @@ export const useBoardStore = defineStore('board', {
       }
     },
 
+    async moveBookmarksFolder(bookmarkIds: string[], folderName: string) {
+      if (!bookmarkIds.length) return false
+      try {
+        await $fetch(this.api('/bookmarks/batch/folder'), {
+          method: 'PUT',
+          body: { bookmark_ids: bookmarkIds, folder_name: folderName },
+        })
+        for (const id of bookmarkIds) {
+          const b = this.bookmarks.find(item => item.id === id)
+          if (b) b.folder_name = folderName
+        }
+        await this.fetchFolders()
+        return true
+      } catch (e) {
+        console.error('Batch move bookmarks failed:', e)
+        useToast().error('フォルダの一括変更に失敗しました', (e as any)?.data?.detail || (e as any)?.message)
+        return false
+      }
+    },
+
     async deleteBookmark(bookmarkId: string) {
       try {
         await $fetch(this.api(`/bookmarks/${bookmarkId}`), { method: 'DELETE' })
@@ -553,7 +573,7 @@ export const useBoardStore = defineStore('board', {
       }
     },
 
-    async uploadImages(files: File[], worldX = 0, worldY = 0) {
+    async uploadImages(files: File[], worldX = 0, worldY = 0, folderName?: string) {
       if (!files.length) return 0
       if (!this.currentBoard) {
         await this.loadFirstBoard()
@@ -567,6 +587,9 @@ export const useBoardStore = defineStore('board', {
         formData.append('board_id', this.currentBoard.id)
         formData.append('pos_x', String(worldX + i * 380))
         formData.append('pos_y', String(worldY))
+        if (folderName && folderName !== 'All References') {
+          formData.append('folder_name', folderName)
+        }
         formData.append('file', files[i])
 
         try {

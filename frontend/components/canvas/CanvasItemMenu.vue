@@ -15,10 +15,12 @@ import {
   Copy,
   Maximize2,
   Pencil,
+  Folder,
 } from 'lucide-vue-next'
 import type { CanvasItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
 import { useToast } from '~/composables/useToast'
+import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 
 const props = defineProps<{
   item: CanvasItem | null
@@ -61,6 +63,49 @@ function setOpacity(opacity: number) {
   if (!item.value) return
   boardStore.updateItem(item.value.id, { opacity })
   emit('changed')
+}
+
+const matchingBookmark = computed(() => {
+  if (!item.value) return null
+  return (
+    boardStore.bookmarks.find(
+      b =>
+        b.id === item.value?.media_item_id ||
+        (item.value?.media?.file_path && b.file_path === item.value.media.file_path) ||
+        (item.value?.media?.source_url && b.source_url === item.value.media.source_url)
+    ) || null
+  )
+})
+
+const currentFolder = computed(() => {
+  return matchingBookmark.value?.folder_name || item.value?.media?.folder_name || 'All References'
+})
+
+async function handleChangeFolder(newFolderName: string) {
+  if (!item.value) return
+  const bookmarkId = matchingBookmark.value?.id || item.value.media_item_id
+  if (bookmarkId) {
+    const success = await boardStore.moveBookmarkFolder(bookmarkId, newFolderName)
+    if (success) {
+      if (item.value.media) {
+        item.value.media.folder_name = newFolderName
+      }
+      toast.success(
+        `「${newFolderName === 'All References' ? 'すべての資料' : newFolderName}」に移動しました`
+      )
+      emit('changed')
+    }
+  } else {
+    const url = item.value.media?.source_url || item.value.media?.file_path
+    if (url) {
+      const res = await boardStore.addBookmark(url, newFolderName, false)
+      if (res) {
+        toast.success(`「${newFolderName}」に保存しました`)
+        await boardStore.fetchBookmarks()
+        emit('changed')
+      }
+    }
+  }
 }
 
 /** 画面端で切れないように位置を補正する */
@@ -179,6 +224,22 @@ onUnmounted(() => {
               </button>
             </div>
           </form>
+        </div>
+
+        <!-- 保存先フォルダ選択 / 変更 -->
+        <div class="px-2.5 py-1.5 border-b border-canvas-border mb-1 space-y-1">
+          <div class="flex items-center justify-between text-[10px] text-ink-subtle">
+            <span class="flex items-center gap-1 font-semibold">
+              <Folder class="w-3 h-3 text-brand" />
+              <span>保存先フォルダ</span>
+            </span>
+          </div>
+          <FolderSelectDropdown
+            :model-value="currentFolder"
+            button-class="w-full text-xs justify-between"
+            placeholder="フォルダを選択..."
+            @select="handleChangeFolder"
+          />
         </div>
 
         <!-- 不透明度 (Opacity) -->

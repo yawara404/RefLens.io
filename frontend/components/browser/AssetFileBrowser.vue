@@ -24,6 +24,8 @@ import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useToast } from '~/composables/useToast'
 import { usePixiv, type PixivArtwork } from '~/composables/usePixiv'
 import PixivImage from '~/components/ui/PixivImage.vue'
+import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
+import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
 
 const props = defineProps<{ boardId: string; insightOpen?: boolean }>()
 
@@ -198,11 +200,14 @@ function resolveImageUrl(path?: string) {
 // -------------------------------------------------------------
 // URL 追加
 // -------------------------------------------------------------
+const urlTargetFolder = ref<string>('All References')
+const dragOverFolderTarget = ref<string | null>(null)
+
 async function handleAddUrl() {
   const url = inputUrl.value.trim()
   if (!url) return
 
-  const targetFolder = boardStore.selectedFolder === 'All References' ? undefined : boardStore.selectedFolder
+  const targetFolder = urlTargetFolder.value === 'All References' ? undefined : urlTargetFolder.value
   const res = await boardStore.addBookmark(url, targetFolder, false)
   if (res) {
     inputUrl.value = ''
@@ -212,17 +217,57 @@ async function handleAddUrl() {
 }
 
 // -------------------------------------------------------------
-// Drag & Drop / 1クリック配置
+// Drag & Drop / フォルダドロップ移動 / 1クリック配置
 // -------------------------------------------------------------
 function onDragStart(e: DragEvent, item: BookmarkItem) {
   if (!e.dataTransfer) return
-  e.dataTransfer.effectAllowed = 'copy'
+  e.dataTransfer.effectAllowed = 'copyMove'
   e.dataTransfer.setData('application/reflens-bookmark-id', item.id)
   e.dataTransfer.setData('text/plain', item.title)
 
   const ghost = new Image()
   ghost.src = resolveImageUrl(item.file_path)
   e.dataTransfer.setDragImage(ghost, 20, 20)
+}
+
+function onFolderBookmarkDragOver(folder: FolderItem, e: DragEvent) {
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  dragOverFolderTarget.value = folder.name
+}
+
+function onFolderBookmarkDragLeave(folder: FolderItem) {
+  if (dragOverFolderTarget.value === folder.name) {
+    dragOverFolderTarget.value = null
+  }
+}
+
+async function onFolderBookmarkDrop(folder: FolderItem, e: DragEvent) {
+  e.preventDefault()
+  dragOverFolderTarget.value = null
+  const bookmarkId = e.dataTransfer?.getData('application/reflens-bookmark-id')
+  if (!bookmarkId) return
+  const success = await boardStore.moveBookmarksFolder([bookmarkId], folder.name)
+  if (success) {
+    toast.success(`「${formatFolderLabel(folder.name)}」に移動しました`)
+  }
+}
+
+async function handleMoveBookmark(item: BookmarkItem, folderName: string) {
+  const success = await boardStore.moveBookmarkFolder(item.id, folderName)
+  if (success) {
+    toast.success(`「${formatFolderLabel(folderName)}」に移動しました`)
+  }
+}
+
+async function handleDeleteBookmark(item: BookmarkItem) {
+  const success = await boardStore.deleteBookmark(item.id)
+  if (success) {
+    toast.success('ブックマークを削除しました', item.title)
+    if (selectedBookmarkId.value === item.id) {
+      selectedBookmarkId.value = null
+    }
+  }
 }
 
 async function handlePlaceOnBoard(item: BookmarkItem) {
@@ -389,9 +434,9 @@ const SOURCE_PILLS = [
     </div>
 
     <!-- 折りたたみ式 URL保存バー -->
-    <div v-if="showUrlInput" class="px-3.5 py-2.5 bg-canvas-card border-b border-canvas-border shrink-0 space-y-1.5">
-      <form class="flex items-center gap-1.5" @submit.prevent="handleAddUrl">
-        <div class="relative flex-1 flex items-center min-w-0">
+    <div v-if="showUrlInput" class="px-3.5 py-2.5 bg-canvas-card border-b border-canvas-border shrink-0 space-y-2">
+      <form class="space-y-2" @submit.prevent="handleAddUrl">
+        <div class="relative flex items-center min-w-0">
           <Globe class="absolute left-2.5 w-3.5 h-3.5 text-ink-subtle pointer-events-none" />
           <input
             v-model="inputUrl"
@@ -401,13 +446,20 @@ const SOURCE_PILLS = [
             aria-label="URLをライブラリに追加"
           >
         </div>
-        <button
-          type="submit"
-          class="px-3 py-1.5 rounded-lg text-xs font-bold bg-brand text-brand-fg hover:bg-brand-hover transition-colors disabled:opacity-40 shrink-0 whitespace-nowrap"
-          :disabled="!inputUrl.trim() || boardStore.isAddingBookmark"
-        >
-          {{ boardStore.isAddingBookmark ? '保存中...' : '保存' }}
-        </button>
+        <div class="flex items-center justify-between gap-1.5">
+          <FolderSelectDropdown
+            v-model="urlTargetFolder"
+            button-class="text-xs h-8 flex-1 truncate"
+            placeholder="保存先フォルダ"
+          />
+          <button
+            type="submit"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold bg-brand text-brand-fg hover:bg-brand-hover transition-colors disabled:opacity-40 shrink-0 whitespace-nowrap h-8"
+            :disabled="!inputUrl.trim() || boardStore.isAddingBookmark"
+          >
+            {{ boardStore.isAddingBookmark ? '保存中...' : '保存' }}
+          </button>
+        </div>
       </form>
     </div>
 
@@ -467,10 +519,16 @@ const SOURCE_PILLS = [
         v-for="folder in visibleFolders"
         :key="folder.name"
         type="button"
-        class="px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 border shrink-0"
-        :class="!isPixivFeedMode && boardStore.selectedFolder === folder.name
-          ? 'bg-brand text-brand-fg border-brand font-bold'
-          : 'bg-canvas-card border-canvas-border-strong text-ink hover:bg-canvas-hover'"
+        class="px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 border shrink-0"
+        :class="[
+          !isPixivFeedMode && boardStore.selectedFolder === folder.name
+            ? 'bg-brand text-brand-fg border-brand font-bold'
+            : 'bg-canvas-card border-canvas-border-strong text-ink hover:bg-canvas-hover',
+          dragOverFolderTarget === folder.name ? 'ring-2 ring-brand border-brand bg-brand-soft font-bold scale-105' : '',
+        ]"
+        @dragover="onFolderBookmarkDragOver(folder, $event)"
+        @dragleave="onFolderBookmarkDragLeave(folder)"
+        @drop.prevent="onFolderBookmarkDrop(folder, $event)"
         @click="isPixivFeedMode = false; boardStore.selectedFolder = folder.name"
       >
         <span
@@ -613,9 +671,15 @@ const SOURCE_PILLS = [
             :key="folder.name"
             type="button"
             class="group text-left rounded-xl border bg-canvas-card overflow-hidden transition-all hover:border-brand"
-            :class="!isPixivFeedMode && boardStore.selectedFolder === folder.name
-              ? 'border-brand ring-2 ring-brand/25'
-              : 'border-canvas-border'"
+            :class="[
+              !isPixivFeedMode && boardStore.selectedFolder === folder.name
+                ? 'border-brand ring-2 ring-brand/25'
+                : 'border-canvas-border',
+              dragOverFolderTarget === folder.name ? 'ring-2 ring-brand border-brand bg-brand-soft/40 scale-[1.02]' : '',
+            ]"
+            @dragover="onFolderBookmarkDragOver(folder, $event)"
+            @dragleave="onFolderBookmarkDragLeave(folder)"
+            @drop.prevent="onFolderBookmarkDrop(folder, $event)"
             @click="selectFolderAndOpenLibrary(folder.name)"
           >
             <div class="h-24 bg-canvas-sunken grid grid-cols-3 gap-0.5 overflow-hidden">
@@ -881,6 +945,12 @@ const SOURCE_PILLS = [
                     >
                       <ExternalLink class="w-3 h-3" />
                     </a>
+                    <BookmarkActionsMenu
+                      :item="item"
+                      @place="handlePlaceOnBoard(item)"
+                      @move="handleMoveBookmark(item, $event)"
+                      @delete="handleDeleteBookmark(item)"
+                    />
                   </div>
                 </div>
               </div>
@@ -932,6 +1002,12 @@ const SOURCE_PILLS = [
                 {{ item.author_name || formatFolderLabel(item.folder_name) }}
               </p>
             </div>
+            <BookmarkActionsMenu
+              :item="item"
+              @place="handlePlaceOnBoard(item)"
+              @move="handleMoveBookmark(item, $event)"
+              @delete="handleDeleteBookmark(item)"
+            />
             <button
               type="button"
               class="px-2.5 py-1.5 rounded-lg bg-brand hover:bg-brand-hover text-brand-fg text-[11px] font-bold transition-colors shrink-0 flex items-center gap-1 whitespace-nowrap"

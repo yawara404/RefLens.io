@@ -1,21 +1,31 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
-import { ExternalLink, FolderInput, Layers, MoreHorizontal, Trash2, X, Check, ArrowLeft } from 'lucide-vue-next'
+import { onBeforeUnmount, ref, watch, nextTick, computed } from 'vue'
+import { ExternalLink, FolderInput, Layers, MoreHorizontal, Trash2, X, Check, ArrowLeft, Plus } from 'lucide-vue-next'
 import type { BookmarkItem, FolderItem } from '~/types'
+import { useBoardStore } from '~/stores/boardStore'
 
-const props = defineProps<{ item: BookmarkItem; folders: FolderItem[] }>()
+const props = withDefaults(defineProps<{ item: BookmarkItem; folders?: FolderItem[] }>(), {
+  folders: () => [],
+})
 const emit = defineEmits<{
   place: []
   move: [folderName: string]
   delete: []
 }>()
 
+const boardStore = useBoardStore()
+const availableFolders = computed(() => (props.folders && props.folders.length > 0 ? props.folders : boardStore.folders))
 const open = ref(false)
 const section = ref<'actions' | 'folders' | 'delete'>('actions')
+const isCreatingFolder = ref(false)
+const newFolderName = ref('')
+const newFolderInputRef = ref<HTMLInputElement | null>(null)
 
 function close() {
   open.value = false
   section.value = 'actions'
+  isCreatingFolder.value = false
+  newFolderName.value = ''
 }
 
 function onEscape(event: KeyboardEvent) {
@@ -34,9 +44,32 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onEscape)
 })
 
+function formatFolderLabel(name?: string): string {
+  if (!name || name === 'All References') return 'すべての資料'
+  return name
+}
+
 function chooseFolder(name: string) {
   if (name !== props.item.folder_name) emit('move', name)
   close()
+}
+
+function startCreatingFolder() {
+  isCreatingFolder.value = true
+  newFolderName.value = ''
+  nextTick(() => {
+    newFolderInputRef.value?.focus()
+  })
+}
+
+async function handleCreateAndMove() {
+  const name = newFolderName.value.trim()
+  if (!name) {
+    isCreatingFolder.value = false
+    return
+  }
+  await boardStore.createFolder(name)
+  chooseFolder(name)
 }
 </script>
 
@@ -111,10 +144,10 @@ function chooseFolder(name: string) {
               @click="section = 'folders'"
             >
               <span class="flex items-center gap-3">
-                <FolderInput class="w-4 h-4 text-ink-muted shrink-0" />
-                <span>コレクションを変更</span>
+                <FolderInput class="w-4 h-4 text-brand shrink-0" />
+                <span>フォルダを変更</span>
               </span>
-              <span class="text-[11px] text-ink-muted truncate max-w-[120px]">{{ item.folder_name }}</span>
+              <span class="text-[11px] text-ink-muted truncate max-w-[120px]">{{ formatFolderLabel(item.folder_name) }}</span>
             </button>
 
             <button
@@ -127,10 +160,10 @@ function chooseFolder(name: string) {
             </button>
           </div>
 
-          <!-- コレクション変更 -->
+          <!-- フォルダ変更 -->
           <div v-else-if="section === 'folders'" class="p-3 space-y-2">
             <div class="flex items-center justify-between px-1">
-              <p class="text-xs font-bold text-ink">移動先のコレクション</p>
+              <p class="text-xs font-bold text-ink">移動先のフォルダ</p>
               <button
                 type="button"
                 class="text-xs font-medium text-ink-muted hover:text-ink flex items-center gap-1"
@@ -141,12 +174,12 @@ function chooseFolder(name: string) {
               </button>
             </div>
 
-            <div class="max-h-60 overflow-y-auto space-y-1 pr-0.5">
+            <div class="max-h-52 overflow-y-auto space-y-1 pr-0.5 no-scrollbar">
               <button
-                v-for="folder in folders"
+                v-for="folder in availableFolders"
                 :key="folder.name"
                 type="button"
-                class="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-xs border transition-colors text-left"
+                class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs border transition-colors text-left"
                 :class="folder.name === item.folder_name
                   ? 'bg-brand-soft border-brand text-brand font-bold'
                   : 'bg-canvas-bg border-canvas-border-strong text-ink font-medium hover:bg-canvas-hover'"
@@ -154,9 +187,48 @@ function chooseFolder(name: string) {
               >
                 <span class="flex items-center gap-2 truncate">
                   <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="{ backgroundColor: folder.color || '#6366f1' }" />
-                  <span class="truncate">{{ folder.name }}</span>
+                  <span class="truncate">{{ formatFolderLabel(folder.name) }}</span>
                 </span>
                 <Check v-if="folder.name === item.folder_name" class="w-4 h-4 text-brand shrink-0" />
+              </button>
+            </div>
+
+            <!-- 新規フォルダ作成 -->
+            <div class="pt-2 border-t border-canvas-border">
+              <div v-if="isCreatingFolder" class="flex items-center gap-1">
+                <input
+                  ref="newFolderInputRef"
+                  v-model="newFolderName"
+                  type="text"
+                  placeholder="フォルダ名を入力..."
+                  class="flex-1 min-w-0 bg-canvas-card border border-canvas-border rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-brand"
+                  @keydown.enter.prevent="handleCreateAndMove"
+                  @keydown.esc.prevent="isCreatingFolder = false"
+                >
+                <button
+                  type="button"
+                  class="p-1.5 rounded-lg bg-brand text-brand-fg text-xs font-bold shrink-0"
+                  :disabled="!newFolderName.trim()"
+                  @click="handleCreateAndMove"
+                >
+                  <Check class="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  class="p-1.5 rounded-lg text-ink-muted hover:text-ink shrink-0"
+                  @click="isCreatingFolder = false"
+                >
+                  <X class="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <button
+                v-else
+                type="button"
+                class="w-full py-1.5 px-2 rounded-lg text-xs font-semibold text-brand hover:bg-brand-soft flex items-center gap-1.5 transition-colors"
+                @click="startCreatingFolder"
+              >
+                <Plus class="w-3.5 h-3.5" />
+                <span>新しいフォルダを作成して移動</span>
               </button>
             </div>
           </div>

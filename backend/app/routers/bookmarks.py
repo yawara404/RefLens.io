@@ -42,6 +42,10 @@ class FolderCreateRequest(BaseModel):
 class UpdateFolderRequest(BaseModel):
     folder_name: str
 
+class BatchUpdateFolderRequest(BaseModel):
+    bookmark_ids: List[str]
+    folder_name: str
+
 class FolderUpdateRequest(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
@@ -537,6 +541,22 @@ def place_bookmark_on_board(
             } if ai else None
         }
     }
+
+@router.put("/batch/folder")
+def batch_update_bookmark_folder(
+    payload: BatchUpdateFolderRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not payload.bookmark_ids:
+        return {"count": 0, "message": "No items provided"}
+
+    updated = db.query(MediaItem).filter(
+        MediaItem.id.in_(payload.bookmark_ids),
+        MediaItem.user_id == user.id
+    ).update({MediaItem.folder_name: payload.folder_name}, synchronize_session=False)
+    db.commit()
+    return {"count": updated, "message": f"{updated} items moved to {payload.folder_name}"}
 
 @router.put("/{bookmark_id}/folder")
 def update_bookmark_folder(

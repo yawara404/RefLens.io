@@ -200,7 +200,7 @@ export function usePixiv() {
    * pixiv接続中は bulk エンドポイントを使い、未接続（デモ表示）時は
    * 通常のブックマーク追加へフォールバックする。
    */
-  async function stockToLibrary(ids: string[]) {
+  async function stockToLibrary(ids: string[], folderName?: string) {
     if (!ids.length) return 0
     isImporting.value = true
 
@@ -208,7 +208,13 @@ export function usePixiv() {
       if (isConnected.value) {
         const res = await $fetch<{ count: number; errors: string[] }>(
           api('/pixiv/stock/bulk'),
-          { method: 'POST', body: { illust_ids: ids } }
+          {
+            method: 'POST',
+            body: {
+              illust_ids: ids,
+              folder_name: folderName || 'All References',
+            },
+          }
         )
         if (res.errors?.length) {
           if (res.count) toast.warning('一部の作品は保存できませんでした', res.errors.slice(0, 2).join(' / '))
@@ -224,7 +230,10 @@ export function usePixiv() {
         ids.map(id =>
           $fetch(api('/bookmarks/add'), {
             method: 'POST',
-            body: { url: `https://www.pixiv.net/artworks/${id}` },
+            body: {
+              url: `https://www.pixiv.net/artworks/${id}`,
+              folder_name: folderName || 'All References',
+            },
           })
         )
       )
@@ -242,7 +251,7 @@ export function usePixiv() {
     }
   }
 
-  async function stockToCanvas(ids: string[], boardId: string, posX?: number, posY?: number) {
+  async function stockToCanvas(ids: string[], boardId: string, posX?: number, posY?: number, folderName?: string) {
     if (!ids.length || !boardId) return false
     isImporting.value = true
     try {
@@ -256,6 +265,7 @@ export function usePixiv() {
             board_id: boardId,
             pos_x: posX,
             pos_y: posY,
+            folder_name: folderName || 'All References',
           },
         }
       )

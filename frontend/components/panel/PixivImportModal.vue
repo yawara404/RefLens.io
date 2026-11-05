@@ -15,6 +15,7 @@ import {
 import { useBoardStore } from '~/stores/boardStore'
 import { usePixiv } from '~/composables/usePixiv'
 import PixivImage from '~/components/ui/PixivImage.vue'
+import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import { useToast } from '~/composables/useToast'
 
 const props = defineProps<{
@@ -33,6 +34,7 @@ const toast = useToast()
 
 const searchInput = ref('')
 const selectedIds = ref<string[]>([])
+const targetFolder = ref('All References')
 
 const categories = [
   { id: 'recommended', label: 'おすすめ' },
@@ -85,9 +87,10 @@ async function handleImport(placeOnCanvas: boolean) {
   const ids = [...pixiv.selectedIds.value]
   if (!ids.length) return
 
+  const folder = targetFolder.value || 'All References'
   const count = placeOnCanvas
-    ? await pixiv.stockToCanvas(ids, props.boardId)
-    : await pixiv.stockToLibrary(ids)
+    ? await pixiv.stockToCanvas(ids, props.boardId, undefined, undefined, folder)
+    : await pixiv.stockToLibrary(ids, folder)
 
   if (!count) return
 
@@ -99,7 +102,8 @@ async function handleImport(placeOnCanvas: boolean) {
     await boardStore.fetchFolders()
   }
 
-  toast.success(`${count} 作品を${placeOnCanvas ? 'キャンバスへ配置' : 'ライブラリへ保存'}しました`)
+  const folderLabel = folder === 'All References' ? 'ライブラリ' : `「${folder}」フォルダ`
+  toast.success(`${count} 作品を${placeOnCanvas ? 'キャンバスへ配置' : folderLabel + 'へ保存'}しました`)
   pixiv.clearSelection()
   emit('close')
 }
@@ -340,6 +344,14 @@ onMounted(() => {
             <span class="text-[11px] text-ink-muted mr-auto sm:mr-0">
               <span class="text-ink font-semibold">{{ pixiv.selectedIds.value.length }}</span> 件選択中
             </span>
+            <div class="flex items-center gap-1">
+              <span class="text-[10px] text-ink-subtle hidden sm:inline">保存先:</span>
+              <FolderSelectDropdown
+                v-model="targetFolder"
+                compact
+                align="top"
+              />
+            </div>
             <button
               type="button"
               class="px-3 py-1.5 rounded-lg text-xs font-medium text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors disabled:opacity-40"

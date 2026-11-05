@@ -100,3 +100,4 @@ export default defineNitroPlugin((nitroApp) => {
     }
   })
 })
+

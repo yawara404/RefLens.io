@@ -22,11 +22,15 @@ import {
   Menu,
   Settings2,
   SlidersHorizontal,
+  Folder,
 } from 'lucide-vue-next'
 import AppHeader from '~/components/ui/AppHeader.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
 import PixivImage from '~/components/ui/PixivImage.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
+import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
+import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
+import type { BookmarkItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
 import { usePixiv, type PixivArtwork } from '~/composables/usePixiv'
 import { useBackendUrl } from '~/composables/useBackendUrl'
@@ -45,15 +49,27 @@ const searchInput = ref('')
 const viewMainRef = ref<HTMLElement | null>(null)
 const activeCategory = ref('recommended')
 const isFilterModalOpen = ref(false)
+const selectedTargetFolder = ref<string>('All References')
+const selectedSavedFolderFilter = ref<string | null>(null)
+const dragOverSavedFolder = ref<string | null>(null)
+
+function formatFolderLabel(name?: string | null): string {
+  if (!name || name === 'All References') return 'すべての資料'
+  return name
+}
+
 const activeCategoryLabel = computed(
   () => CATEGORIES.find(c => c.id === activeCategory.value)?.label || 'おすすめ'
 )
 const savedBookmarks = computed(() => {
   const query = searchInput.value.trim().toLowerCase()
-  const pixivBookmarks = boardStore.bookmarks.filter(item => item.source_type === 'pixiv')
+  let list = boardStore.bookmarks.filter(item => item.source_type === 'pixiv')
+  if (selectedSavedFolderFilter.value && selectedSavedFolderFilter.value !== 'All References') {
+    list = list.filter(item => item.folder_name === selectedSavedFolderFilter.value)
+  }
   return query
-    ? pixivBookmarks.filter(item => [item.title, item.author_name || '', item.source_url || '', item.folder_name || ''].join(' ').toLowerCase().includes(query))
-    : pixivBookmarks
+    ? list.filter(item => [item.title, item.author_name || '', item.source_url || '', item.folder_name || ''].join(' ').toLowerCase().includes(query))
+    : list
 })
 const savedPixivIds = computed(() => new Set(
   boardStore.bookmarks
@@ -236,20 +252,52 @@ async function handleStash(artwork?: PixivArtwork) {
   if (!ids.length) return
 
   isStashing.value = true
-  const count = await pixiv.stockToLibrary(ids)
+  const targetFolder = selectedTargetFolder.value || 'All References'
+  const count = await pixiv.stockToLibrary(ids, targetFolder)
   isStashing.value = false
 
   if (!count) return
 
   await boardStore.fetchBookmarks()
   await boardStore.fetchFolders()
-  toast.success('RefLensのライブラリに保存しました')
+  const label = formatFolderLabel(targetFolder)
+  toast.success(`${count} 作品を「${label}」に保存しました`)
   pixiv.clearSelection()
   closeDetail()
   searchInput.value = ''
   activeCategory.value = 'saved'
   await nextTick()
   if (viewMainRef.value) viewMainRef.value.scrollTop = 0
+}
+
+async function handleMoveBookmark(item: BookmarkItem, folderName: string) {
+  const moved = await boardStore.moveBookmarkFolder(item.id, folderName)
+  if (moved) toast.success(`「${item.title}」を ${formatFolderLabel(folderName)} へ移動しました`)
+}
+
+async function handleDeleteBookmark(item: BookmarkItem) {
+  const deleted = await boardStore.deleteBookmark(item.id)
+  if (deleted) toast.success('ブックマークを削除しました')
+}
+
+function onBookmarkDragStart(event: DragEvent, item: BookmarkItem) {
+  if (!event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'copyMove'
+  event.dataTransfer.setData('application/reflens-bookmark-id', item.id)
+  event.dataTransfer.setData('text/plain', item.id)
+}
+
+async function onDropBookmarkOnSavedFolder(folderName: string, event: DragEvent) {
+  dragOverSavedFolder.value = null
+  if (!event.dataTransfer) return
+  const bookmarkId = event.dataTransfer.getData('application/reflens-bookmark-id') || event.dataTransfer.getData('text/plain')
+  if (!bookmarkId) return
+
+  const item = boardStore.bookmarks.find(b => b.id === bookmarkId)
+  if (!item) return
+  if (item.folder_name === folderName) return
+
+  await handleMoveBookmark(item, folderName)
 }
 
 async function placeSelectedOnCanvas() {
@@ -575,7 +623,37 @@ onUnmounted(() => {
       </div>
 
       <!-- RefLensに保存したブックマーク -->
-      <div v-if="activeCategory === 'saved'">
+      <div v-if="activeCategory === 'saved'" class="space-y-3">
+        <!-- フォルダ絞り込み & ドラッグ＆ドロップ先ピル -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+          <span class="text-[11px] font-bold text-ink-muted flex items-center gap-1 shrink-0 mr-1">
+            <Folder class="w-3.5 h-3.5 text-brand" />
+            <span>フォルダ:</span>
+          </span>
+          <button
+            v-for="folder in boardStore.folders"
+            :key="folder.name"
+            type="button"
+            class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap border transition-all flex items-center gap-1.5 shrink-0"
+            :class="[
+              (selectedSavedFolderFilter === folder.name || (!selectedSavedFolderFilter && folder.name === 'All References'))
+                ? 'bg-brand text-brand-fg border-brand font-bold shadow-sm'
+                : 'bg-canvas-card text-ink border-canvas-border hover:border-canvas-border-strong',
+              dragOverSavedFolder === folder.name ? 'ring-2 ring-brand scale-105 bg-brand-soft text-brand' : ''
+            ]"
+            @click="selectedSavedFolderFilter = folder.name === 'All References' ? null : (selectedSavedFolderFilter === folder.name ? null : folder.name)"
+            @dragover.prevent="dragOverSavedFolder = folder.name"
+            @dragleave="dragOverSavedFolder = null"
+            @drop.prevent="onDropBookmarkOnSavedFolder(folder.name, $event)"
+          >
+            <span class="w-2 h-2 rounded-full shrink-0" :style="{ backgroundColor: folder.color || '#6366f1' }" />
+            <span>{{ formatFolderLabel(folder.name) }}</span>
+            <span class="text-[10px] opacity-75 font-mono">
+              {{ folder.name === 'All References' ? boardStore.bookmarks.filter(b => b.source_type === 'pixiv').length : (folder.count ?? 0) }}
+            </span>
+          </button>
+        </div>
+
         <div v-if="!savedBookmarks.length" class="py-24 text-center space-y-3">
           <Bookmark class="w-8 h-8 text-ink-subtle mx-auto" />
           <p class="text-sm text-ink-muted">{{ searchInput ? '検索に一致するpixiv作品がありません' : 'RefLensに保存したpixiv作品はありません' }}</p>
@@ -587,19 +665,36 @@ onUnmounted(() => {
             :key="item.id"
             tabindex="0"
             role="button"
+            draggable="true"
             :aria-label="`${item.title} のプレビューを開く`"
-            class="group rounded-xl border border-canvas-border bg-canvas-card overflow-hidden cursor-pointer hover:border-canvas-border-strong focus-visible:border-brand transition-colors"
+            class="group relative rounded-xl border border-canvas-border bg-canvas-card overflow-hidden cursor-grab active:cursor-grabbing hover:border-canvas-border-strong focus-visible:border-brand transition-colors"
+            @dragstart="onBookmarkDragStart($event, item)"
             @click="boardStore.openQuickLook(item)"
             @keydown.enter.self.prevent="boardStore.openQuickLook(item)"
             @keydown.space.self.prevent="boardStore.openQuickLook(item)"
           >
             <div class="relative aspect-[4/3] bg-canvas-sunken overflow-hidden">
-              <img :src="resolveMediaUrl(item.file_path)" :alt="item.title" class="w-full h-full object-cover" loading="lazy">
-              <span class="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-canvas-panel/90 text-ink">{{ item.source_type === 'pixiv' ? 'pixiv' : item.source_type === 'instagram' ? 'Instagram' : 'Web' }}</span>
+              <img :src="resolveMediaUrl(item.file_path)" :alt="item.title" class="w-full h-full object-cover pointer-events-none" loading="lazy">
+              <span class="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-canvas-panel/90 text-ink">pixiv</span>
+              <!-- 三点メニュー（フォルダ変更・キャンバス配置・削除） -->
+              <div class="absolute top-2 right-2 z-10" @click.stop>
+                <BookmarkActionsMenu
+                  :item="item"
+                  :folders="boardStore.folders"
+                  @place="handlePlaceOnCanvas(item)"
+                  @move="handleMoveBookmark(item, $event)"
+                  @delete="handleDeleteBookmark(item)"
+                />
+              </div>
             </div>
             <div class="p-2.5 space-y-1">
               <h3 class="text-[11px] font-semibold text-ink line-clamp-2" :title="item.title">{{ item.title }}</h3>
-              <p class="text-[10px] text-ink-subtle truncate">{{ item.author_name || item.folder_name || item.source_url }}</p>
+              <p class="text-[10px] text-ink-subtle truncate flex items-center gap-1">
+                <span>{{ item.author_name || item.source_url }}</span>
+                <span v-if="item.folder_name && item.folder_name !== 'All References'" class="px-1 py-0.2 bg-canvas-sunken rounded text-[9px] font-medium text-brand">
+                  {{ item.folder_name }}
+                </span>
+              </p>
             </div>
           </article>
         </div>
@@ -792,9 +887,17 @@ onUnmounted(() => {
           <span class="text-ink font-semibold">{{ pixiv.selectedIds.value.length }}</span> 件選択中
         </span>
         <div class="h-4 w-px bg-canvas-border hidden sm:block" />
+        <div class="flex items-center gap-1">
+          <span class="text-[10px] text-ink-subtle hidden sm:inline">保存先:</span>
+          <FolderSelectDropdown
+            v-model="selectedTargetFolder"
+            compact
+            align="top"
+          />
+        </div>
         <button
           type="button"
-          class="px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-pixiv text-white hover:bg-pixiv-hover transition-colors disabled:opacity-50 flex items-center gap-1 whitespace-nowrap"
+          class="px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-pixiv text-white hover:bg-pixiv-hover transition-colors disabled:opacity-50 flex items-center gap-1 whitespace-nowrap shadow-sm"
           :disabled="isStashing || pixiv.isImporting.value"
           @click="stashSelected"
         >
@@ -961,15 +1064,29 @@ onUnmounted(() => {
                 {{ isPlacing ? '配置中...' : 'キャンバスへ配置' }}
               </button>
 
-              <button
-                type="button"
-                class="w-full py-2 rounded-lg bg-pixiv text-white text-xs font-bold hover:bg-pixiv-hover transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
-                :disabled="isStashing || pixiv.isImporting.value"
-                @click="handleStashDetail"
-              >
-                <Bookmark class="w-3.5 h-3.5" />
-                {{ isStashing ? '保存中...' : 'ライブラリへ保存' }}
-              </button>
+              <!-- 保存先フォルダ選択と保存ボタン -->
+              <div class="space-y-1.5 p-2 rounded-xl bg-canvas-sunken/60 border border-canvas-border">
+                <div class="flex items-center justify-between gap-1 text-[11px] px-0.5">
+                  <span class="font-bold text-ink-muted flex items-center gap-1">
+                    <Folder class="w-3.5 h-3.5 text-brand" />
+                    <span>保存先:</span>
+                  </span>
+                  <FolderSelectDropdown
+                    v-model="selectedTargetFolder"
+                    compact
+                    align="right"
+                  />
+                </div>
+                <button
+                  type="button"
+                  class="w-full py-2 rounded-lg bg-pixiv text-white text-xs font-bold hover:bg-pixiv-hover transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-sm"
+                  :disabled="isStashing || pixiv.isImporting.value"
+                  @click="handleStashDetail"
+                >
+                  <Bookmark class="w-3.5 h-3.5" />
+                  {{ isStashing ? '保存中...' : `${formatFolderLabel(selectedTargetFolder)} に保存` }}
+                </button>
+              </div>
 
               <div class="flex items-center gap-1.5">
                 <a

@@ -117,6 +117,7 @@ async def upload_media(
     board_id: str = Form(...),
     pos_x: float = Form(0.0),
     pos_y: float = Form(0.0),
+    folder_name: Optional[str] = Form("All References"),
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     user: User = Depends(get_current_user),
@@ -164,6 +165,7 @@ async def upload_media(
     media_item = MediaItem(
         user_id=user.id,
         board_id=board_id,
+        folder_name=folder_name or "All References",
         source_type="local_upload",
         original_file_name=file.filename,
         file_path=relative_url,

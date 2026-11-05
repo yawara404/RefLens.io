@@ -31,6 +31,7 @@ import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
 import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
 import FolderActionsMenu from '~/components/ui/FolderActionsMenu.vue'
+import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import type { BookmarkItem, FolderItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
 import { useMediaUrl } from '~/composables/useMediaUrl'
@@ -54,6 +55,8 @@ type ManagerSection = 'home' | 'search' | 'library'
 const activeSection = ref<ManagerSection>('home')
 
 const inputDropUrl = ref('')
+const stashTargetFolder = ref<string>('All References')
+const dragOverFolderTarget = ref<string | null>(null)
 const isDropping = ref(false)
 const isDraggingFiles = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -745,6 +748,51 @@ async function handleDeleteFolder(folder: FolderItem) {
   await boardStore.deleteFolder(folder.id)
 }
 
+function onBookmarkDragStart(e: DragEvent, b: BookmarkItem) {
+  if (!e.dataTransfer) return
+  e.dataTransfer.effectAllowed = 'copyMove'
+  e.dataTransfer.setData('application/reflens-bookmark-id', b.id)
+  e.dataTransfer.setData('text/plain', b.title)
+  if (b.file_path) {
+    e.dataTransfer.setData('text/uri-list', resolveThumbnail(b.file_path))
+  }
+  const ghost = new Image()
+  ghost.src = resolveThumbnail(b.file_path)
+  e.dataTransfer.setDragImage(ghost, 20, 20)
+}
+
+function onFolderBookmarkDragOver(folder: FolderItem, event: DragEvent) {
+  if (draggingFolder.value) {
+    onFolderDragOver(folder, event)
+    return
+  }
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  dragOverFolderTarget.value = folder.name
+}
+
+function onFolderBookmarkDragLeave(folder: FolderItem) {
+  if (dragOverFolderTarget.value === folder.name) {
+    dragOverFolderTarget.value = null
+  }
+}
+
+async function onFolderBookmarkDrop(folder: FolderItem, event: DragEvent) {
+  if (draggingFolder.value) {
+    onFolderDrop(folder)
+    return
+  }
+  event.preventDefault()
+  dragOverFolderTarget.value = null
+  const bookmarkId = event.dataTransfer?.getData('application/reflens-bookmark-id')
+  if (!bookmarkId) return
+
+  const success = await boardStore.moveBookmarksFolder([bookmarkId], folder.name)
+  if (success) {
+    toast.success(`「${formatFolderLabel(folder.name)}」に移動しました`)
+  }
+}
+
 async function handleDropUrl() {
   const url = inputDropUrl.value.trim()
   if (!url || isDropping.value) return
@@ -753,7 +801,8 @@ async function handleDropUrl() {
   inputDropUrl.value = ''
 
   try {
-    const res = await boardStore.addBookmark(url, selectedFolder.value ?? 'All References', false)
+    const target = stashTargetFolder.value || selectedFolder.value || 'All References'
+    const res = await boardStore.addBookmark(url, target, false)
     if (res) toast.success('ライブラリに保存しました', url)
   } finally {
     isDropping.value = false
@@ -762,7 +811,8 @@ async function handleDropUrl() {
 
 async function handleUploadFiles(files: File[]) {
   if (!files.length) return
-  await boardStore.uploadImages(files, 150, 150)
+  const target = stashTargetFolder.value || selectedFolder.value || undefined
+  await boardStore.uploadImages(files, 150, 150, target)
 }
 
 async function onFileInputChange(e: Event) {
@@ -1039,7 +1089,7 @@ onMounted(async () => {
                 activeSection === 'library' && ((folder.name === 'All References' && selectedFolder === null) || selectedFolder === folder.name)
                   ? 'bg-brand-soft ring-1 ring-inset ring-brand/25'
                   : 'hover:bg-canvas-hover',
-                dragOverFolder === folder.name ? 'ring-1 ring-brand' : '',
+                dragOverFolder === folder.name || dragOverFolderTarget === folder.name ? 'ring-2 ring-brand border-brand bg-brand-soft' : '',
                 draggingFolder === folder.name ? 'opacity-50' : '',
                 isCustomFolder(folder) ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
               ]"
@@ -1053,9 +1103,9 @@ onMounted(async () => {
               @keydown.alt.up.prevent="moveFolderByKey(folder, -1)"
               @keydown.alt.down.prevent="moveFolderByKey(folder, 1)"
               @dragstart="onFolderDragStart(folder, $event)"
-              @dragover="onFolderDragOver(folder, $event)"
-              @dragleave="onFolderDragLeave(folder)"
-              @drop.prevent="onFolderDrop(folder)"
+              @dragover="onFolderBookmarkDragOver(folder, $event)"
+              @dragleave="onFolderBookmarkDragLeave(folder)"
+              @drop.prevent="onFolderBookmarkDrop(folder, $event)"
               @dragend="resetFolderDrag"
             >
               <span class="w-4 shrink-0 flex items-center justify-center text-ink-muted">
@@ -1198,25 +1248,34 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div class="relative flex items-center">
-            <Globe class="absolute left-3 w-3.5 h-3.5 sm:w-4 sm:h-4 text-ink-subtle pointer-events-none" />
-            <input
-              v-model="inputDropUrl"
-              type="url"
-              placeholder="https://www.pixiv.net/artworks/..."
-              class="w-full bg-canvas-card border border-canvas-border rounded-xl pl-9 sm:pl-10 pr-20 sm:pr-24 py-1.5 sm:py-2 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-pixiv font-mono transition-colors"
-              aria-label="URLをライブラリへ保存"
-              @keydown.enter="handleDropUrl"
-            >
-            <button
-              type="button"
-              class="absolute right-1.5 px-2.5 sm:px-3.5 py-1 bg-brand text-brand-fg hover:bg-brand-hover rounded-lg text-[11px] font-bold transition-colors disabled:opacity-50 flex items-center gap-1"
-              :disabled="!inputDropUrl.trim() || isDropping"
-              @click="handleDropUrl"
-            >
-              <Check class="w-3.5 h-3.5" />
-              {{ isDropping ? '保存中...' : '保存' }}
-            </button>
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div class="relative flex-1 flex items-center min-w-0">
+              <Globe class="absolute left-3 w-3.5 h-3.5 sm:w-4 sm:h-4 text-ink-subtle pointer-events-none" />
+              <input
+                v-model="inputDropUrl"
+                type="url"
+                placeholder="https://www.pixiv.net/artworks/... または画像URL"
+                class="w-full bg-canvas-card border border-canvas-border rounded-xl pl-9 sm:pl-10 pr-4 py-1.5 sm:py-2 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-pixiv font-mono transition-colors"
+                aria-label="URLをライブラリへ保存"
+                @keydown.enter="handleDropUrl"
+              >
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <FolderSelectDropdown
+                v-model="stashTargetFolder"
+                placeholder="保存先フォルダ"
+                button-class="text-xs h-8 sm:h-9"
+              />
+              <button
+                type="button"
+                class="px-3 sm:px-4 py-1.5 sm:py-2 bg-brand text-brand-fg hover:bg-brand-hover rounded-xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0 h-8 sm:h-9"
+                :disabled="!inputDropUrl.trim() || isDropping"
+                @click="handleDropUrl"
+              >
+                <Check class="w-3.5 h-3.5" />
+                <span>{{ isDropping ? '保存中...' : '保存' }}</span>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -1370,7 +1429,15 @@ onMounted(async () => {
                 tabindex="0"
                 role="button"
                 :aria-label="`${folder.name} フォルダを開く（${getFolderBookmarks(folder).length}件）`"
-                class="group relative flex flex-col rounded-2xl bg-canvas-panel border border-canvas-border hover:border-brand focus-visible:border-brand transition-colors overflow-hidden cursor-pointer shadow-panel"
+                class="group relative flex flex-col rounded-2xl bg-canvas-panel border transition-all overflow-hidden cursor-pointer shadow-panel"
+                :class="[
+                  dragOverFolderTarget === folder.name
+                    ? 'ring-2 ring-brand border-brand bg-brand-soft/40 scale-[1.02]'
+                    : 'border-canvas-border hover:border-brand focus-visible:border-brand',
+                ]"
+                @dragover="onFolderBookmarkDragOver(folder, $event)"
+                @dragleave="onFolderBookmarkDragLeave(folder)"
+                @drop.prevent="onFolderBookmarkDrop(folder, $event)"
                 @click="selectFolder(folder)"
                 @keydown.enter.self.prevent="selectFolder(folder)"
                 @keydown.space.self.prevent="selectFolder(folder)"
@@ -1494,8 +1561,10 @@ onMounted(async () => {
                 :key="b.id"
                 tabindex="0"
                 role="button"
+                draggable="true"
                 :aria-label="`${b.title} の詳細プレビューを開く`"
-                class="group relative flex flex-col rounded-xl bg-canvas-card border border-canvas-border hover:border-brand transition-colors cursor-pointer overflow-hidden"
+                class="group relative flex flex-col rounded-xl bg-canvas-card border border-canvas-border hover:border-brand transition-colors cursor-grab active:cursor-grabbing overflow-hidden"
+                @dragstart="onBookmarkDragStart($event, b)"
                 @click="boardStore.openQuickLook(b)"
                 @keydown.enter.self.prevent="boardStore.openQuickLook(b)"
                 @keydown.space.self.prevent="boardStore.openQuickLook(b)"
@@ -1944,10 +2013,16 @@ onMounted(async () => {
                 <!-- すべて (All) -->
                 <button
                   type="button"
-                  class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors shrink-0 flex items-center gap-1.5"
-                  :class="selectedFolder === null
-                    ? 'bg-brand text-brand-fg border-brand shadow-sm'
-                    : 'bg-canvas-bg text-ink border-canvas-border hover:bg-canvas-hover'"
+                  class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap border transition-all shrink-0 flex items-center gap-1.5"
+                  :class="[
+                    selectedFolder === null
+                      ? 'bg-brand text-brand-fg border-brand shadow-sm'
+                      : 'bg-canvas-bg text-ink border-canvas-border hover:bg-canvas-hover',
+                    dragOverFolderTarget === 'All References' ? 'ring-2 ring-brand border-brand bg-brand-soft font-bold scale-105' : '',
+                  ]"
+                  @dragover="onFolderBookmarkDragOver({ name: 'All References', count: 0, icon: '', color: '' }, $event)"
+                  @dragleave="onFolderBookmarkDragLeave({ name: 'All References', count: 0, icon: '', color: '' })"
+                  @drop.prevent="onFolderBookmarkDrop({ name: 'All References', count: 0, icon: '', color: '' }, $event)"
                   @click="selectedFolder = null"
                 >
                   <span>すべて</span>
@@ -1959,10 +2034,16 @@ onMounted(async () => {
                   v-for="folder in visibleFolders.filter(f => f.name !== 'All References')"
                   :key="folder.name"
                   type="button"
-                  class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors flex items-center gap-1.5 shrink-0"
-                  :class="selectedFolder === folder.name
-                    ? 'bg-brand text-brand-fg border-brand shadow-sm ring-1 ring-brand'
-                    : 'bg-canvas-bg text-ink border-canvas-border hover:bg-canvas-hover'"
+                  class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap border transition-all flex items-center gap-1.5 shrink-0"
+                  :class="[
+                    selectedFolder === folder.name
+                      ? 'bg-brand text-brand-fg border-brand shadow-sm ring-1 ring-brand'
+                      : 'bg-canvas-bg text-ink border-canvas-border hover:bg-canvas-hover',
+                    dragOverFolderTarget === folder.name ? 'ring-2 ring-brand border-brand bg-brand-soft font-bold scale-105' : '',
+                  ]"
+                  @dragover="onFolderBookmarkDragOver(folder, $event)"
+                  @dragleave="onFolderBookmarkDragLeave(folder)"
+                  @drop.prevent="onFolderBookmarkDrop(folder, $event)"
                   @click="selectedFolder = folder.name"
                 >
                   <span
@@ -2039,8 +2120,10 @@ onMounted(async () => {
                 :key="b.id"
                 tabindex="0"
                 role="button"
+                draggable="true"
                 :aria-label="`${b.title} の詳細プレビューを開く`"
-                class="group relative flex flex-col rounded-xl bg-canvas-card border border-canvas-border transition-colors cursor-pointer hover:border-brand/50 focus-visible:border-brand"
+                class="group relative flex flex-col rounded-xl bg-canvas-card border border-canvas-border transition-colors cursor-grab active:cursor-grabbing hover:border-brand/50 focus-visible:border-brand"
+                @dragstart="onBookmarkDragStart($event, b)"
                 @click="boardStore.openQuickLook(b)"
                 @keydown.enter.self.prevent="boardStore.openQuickLook(b)"
                 @keydown.space.self.prevent="boardStore.openQuickLook(b)"
@@ -2147,8 +2230,10 @@ onMounted(async () => {
                 :key="b.id"
                 tabindex="0"
                 role="button"
+                draggable="true"
                 :aria-label="`${b.title} の詳細プレビューを開く`"
-                class="group relative flex items-center gap-3 p-2.5 rounded-xl bg-canvas-card border border-canvas-border hover:border-brand focus-visible:border-brand cursor-pointer transition-colors"
+                class="group relative flex items-center gap-3 p-2.5 rounded-xl bg-canvas-card border border-canvas-border hover:border-brand focus-visible:border-brand cursor-grab active:cursor-grabbing transition-colors"
+                @dragstart="onBookmarkDragStart($event, b)"
                 @click="boardStore.openQuickLook(b)"
                 @keydown.enter.self.prevent="boardStore.openQuickLook(b)"
                 @keydown.space.self.prevent="boardStore.openQuickLook(b)"
