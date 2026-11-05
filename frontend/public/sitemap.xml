@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <!-- RefLens.io ホーム / Manager -->
+  <url>
+    <loc>https://art.wawa-app.me/RefLens.io/</loc>
+    <lastmod>2026-11-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://art.wawa-app.me/RefLens.io/favicon-card.png</image:loc>
+      <image:title>RefLens.io - Smart Infinite Canvas for Artists</image:title>
+      <image:caption>Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス</image:caption>
+    </image:image>
+  </url>
+
+  <!-- 無限キャンバス -->
+  <url>
+    <loc>https://art.wawa-app.me/RefLens.io/canvas</loc>
+    <lastmod>2026-11-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Pixiv ビューワー -->
+  <url>
+    <loc>https://art.wawa-app.me/RefLens.io/view</loc>
+    <lastmod>2026-11-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- このサイトについて -->
+  <url>
+    <loc>https://art.wawa-app.me/RefLens.io/about</loc>
+    <lastmod>2026-11-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- 利用上の注意 -->
+  <url>
+    <loc>https://art.wawa-app.me/RefLens.io/terms</loc>
+    <lastmod>2026-11-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+  <!-- プライバシーポリシー -->
+  <url>
+    <loc>https://art.wawa-app.me/RefLens.io/privacy</loc>
+    <lastmod>2026-11-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+</urlset>

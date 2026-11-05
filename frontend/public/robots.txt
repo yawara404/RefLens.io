@@ -1,2 +1,19 @@
-User-Agent: *
-Disallow:
+# RefLens.io robots.txt
+# https://art.wawa-app.me/RefLens.io/
+#
+# クロール方針:
+# - 公開画面 (Manager, Canvas, Pixiv View, このサイトについて, 利用上の注意, プライバシーポリシー) を許可
+# - 内部API (/RefLens.io/api/*) と個人管理ページ (/RefLens.io/account) は検索インデックスから除外
+# - 静的アセット (/RefLens.io/_nuxt/*) はレンダリングに必要なためブロックしない
+
+User-agent: *
+Allow: /RefLens.io/
+Allow: /RefLens.io/canvas
+Allow: /RefLens.io/view
+Allow: /RefLens.io/about
+Allow: /RefLens.io/terms
+Allow: /RefLens.io/privacy
+Disallow: /RefLens.io/api/
+Disallow: /RefLens.io/account
+
+Sitemap: https://art.wawa-app.me/RefLens.io/sitemap.xml

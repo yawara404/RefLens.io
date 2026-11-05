@@ -12,7 +12,12 @@ import AuthDialog from '~/components/ui/AuthDialog.vue'
 const auth = useAuthStore()
 const toast = useToast()
 
-useHead({ title: '管理ページ | RefLens.io' })
+useHead({
+  title: '管理ページ | RefLens.io',
+  meta: [
+    { name: 'robots', content: 'noindex, nofollow' }
+  ]
+})
 
 /** 認証状態が確定するまで描画しない（ハイドレーション不一致の回避） */
 const isMounted = ref(false)

@@ -76,12 +76,35 @@ export default defineNuxtConfig({
       ],
       link: [
         { rel: 'canonical', href: 'https://art.wawa-app.me/RefLens.io/' },
+        { rel: 'sitemap', type: 'application/xml', title: 'Sitemap', href: `${appBase}sitemap.xml` },
         { rel: 'icon', type: 'image/svg+xml', href: `${appBase}favicon.svg` },
         { rel: 'icon', type: 'image/x-icon', href: `${appBase}favicon.ico` },
         { rel: 'apple-touch-icon', href: `${appBase}favicon-card.png` },
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
         { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap' }
+      ],
+      script: [
+        {
+          type: 'application/ld+json',
+          children: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'WebApplication',
+            name: 'RefLens.io',
+            url: 'https://art.wawa-app.me/RefLens.io/',
+            description: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。',
+            applicationCategory: 'DesignApplication',
+            operatingSystem: 'Web',
+            inLanguage: 'ja',
+            isAccessibleForFree: true,
+            image: 'https://art.wawa-app.me/RefLens.io/favicon-card.png',
+            offers: {
+              '@type': 'Offer',
+              price: '0',
+              priceCurrency: 'JPY'
+            }
+          })
+        }
       ]
     }
   },

@@ -141,3 +141,4 @@ print(f'生成: {PNG_PATH} ({TARGET_SIZE}x{TARGET_SIZE}, {PNG_PATH.stat().st_siz
 ico_sizes = [(16, 16), (32, 32), (48, 48)]
 final_img.save(ICO_PATH, format='ICO', sizes=ico_sizes)
 print(f'生成: {ICO_PATH}')
+
