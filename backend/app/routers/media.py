@@ -75,17 +75,23 @@ async def perform_ai_analysis(
     file_path_str: str,
     db_factory,
     extra_tags: Optional[list] = None,
+    force: bool = False,
 ):
     """画像に対してVision LLM解析を実行してDBに保存（バックグラウンドタスク）
 
     extra_tags: pixiv等の取得元メタデータ由来のタグ。解析タグに優先してマージされる。
+    force: ユーザー設定（auto_tagging）に関わらず強制実行するかどうか。
     """
     try:
         def can_analyze() -> bool:
             db = db_factory()
             try:
                 media = db.query(MediaItem).filter(MediaItem.id == media_id).first()
-                return bool(media) and (
+                if not media:
+                    return False
+                if not force and media.user and not getattr(media.user, "auto_tagging", True):
+                    return False
+                return (
                     media.source_type != "pixiv" or media.ai_analysis_policy == "allowed"
                 )
             finally:

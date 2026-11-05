@@ -17,9 +17,11 @@ import {
   Check,
   RotateCcw,
   X,
+  Sparkles,
 } from 'lucide-vue-next'
 import type { BookmarkItem, FolderItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
+import { useAuthStore } from '~/stores/authStore'
 import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useToast } from '~/composables/useToast'
 import { usePixiv, type PixivArtwork } from '~/composables/usePixiv'
@@ -30,6 +32,7 @@ import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
 const props = defineProps<{ boardId: string; insightOpen?: boolean }>()
 
 const boardStore = useBoardStore()
+const auth = useAuthStore()
 const toast = useToast()
 const pixiv = usePixiv()
 const { resolveMediaUrl } = useMediaUrl()
@@ -452,6 +455,18 @@ const SOURCE_PILLS = [
             button-class="text-xs h-8 flex-1 truncate"
             placeholder="保存先フォルダ"
           />
+          <button
+            type="button"
+            class="px-2 py-1 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1 shrink-0 h-8"
+            :class="auth.autoTagging
+              ? 'bg-brand-soft text-brand border-brand/40 font-bold'
+              : 'bg-canvas-bg text-ink-muted border-canvas-border hover:text-ink'"
+            :title="auth.autoTagging ? '自動AIタグ付け: ON（クリックでOFFに切替）' : '自動AIタグ付け: OFF（クリックでONに切替）'"
+            @click="auth.setAutoTagging(!auth.autoTagging)"
+          >
+            <Sparkles class="w-3.5 h-3.5" :class="auth.autoTagging ? 'text-brand' : 'opacity-40'" />
+            <span class="text-[10px] font-mono">{{ auth.autoTagging ? 'ON' : 'OFF' }}</span>
+          </button>
           <button
             type="submit"
             class="px-3 py-1.5 rounded-lg text-xs font-bold bg-brand text-brand-fg hover:bg-brand-hover transition-colors disabled:opacity-40 shrink-0 whitespace-nowrap h-8"

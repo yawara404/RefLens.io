@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Check,
   Copy,
+  Tag,
 } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
 import { useMediaUrl } from '~/composables/useMediaUrl'
@@ -108,6 +109,48 @@ async function removeFromLibrary() {
   await boardStore.deleteBookmark(boardStore.quickLookItem.id)
   toast.success('ライブラリから削除しました')
   boardStore.closeQuickLook()
+}
+
+const isAddingTag = ref(false)
+const newTagInput = ref('')
+const tagInputRef = ref<HTMLInputElement | null>(null)
+const isAnalyzing = ref(false)
+
+const itemTags = computed(() => {
+  return item.value?.ai_analysis?.tags || []
+})
+
+function openAddTag() {
+  isAddingTag.value = true
+  newTagInput.value = ''
+  nextTick(() => {
+    tagInputRef.value?.focus()
+  })
+}
+
+async function handleAddTag() {
+  const val = newTagInput.value.trim().replace(/^#/, '')
+  if (!val || !item.value) return
+  newTagInput.value = ''
+  isAddingTag.value = false
+  await boardStore.addBookmarkTag(item.value.id, val)
+}
+
+async function handleRemoveTag(tag: string) {
+  if (!item.value) return
+  await boardStore.removeBookmarkTag(item.value.id, tag)
+}
+
+async function handleTriggerAi() {
+  if (!item.value || isAnalyzing.value) return
+  isAnalyzing.value = true
+  try {
+    await boardStore.triggerAiAnalysis(item.value.id)
+  } finally {
+    setTimeout(() => {
+      isAnalyzing.value = false
+    }, 3500)
+  }
 }
 
 function isTypingTarget(target: EventTarget | null) {
@@ -253,7 +296,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
           </div>
 
           <!-- AI解析 -->
-          <template v-if="item.ai_analysis">
+          <template v-if="item.ai_analysis && (item.ai_analysis.composition || item.ai_analysis.lighting || item.ai_analysis.palette?.length)">
             <div class="space-y-2">
               <p class="text-[10px] font-mono uppercase text-ink-subtle flex items-center gap-1.5">
                 <Sparkles class="w-3 h-3 text-brand" />
@@ -275,27 +318,95 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
                 </button>
               </div>
 
-              <div class="p-2 rounded-lg bg-canvas-card border border-canvas-border text-[11px] text-ink-muted">
+              <div v-if="item.ai_analysis.composition" class="p-2 rounded-lg bg-canvas-card border border-canvas-border text-[11px] text-ink-muted">
                 <span class="font-semibold text-ok block mb-0.5">構図</span>
                 {{ item.ai_analysis.composition }}
               </div>
 
-              <div class="p-2 rounded-lg bg-canvas-card border border-canvas-border text-[11px] text-ink-muted">
+              <div v-if="item.ai_analysis.lighting" class="p-2 rounded-lg bg-canvas-card border border-canvas-border text-[11px] text-ink-muted">
                 <span class="font-semibold text-warn block mb-0.5">ライティング</span>
                 {{ item.ai_analysis.lighting }}
               </div>
-
-              <div v-if="item.ai_analysis.tags?.length" class="flex flex-wrap gap-1">
-                <span
-                  v-for="tag in item.ai_analysis.tags"
-                  :key="tag"
-                  class="px-1.5 py-0.5 rounded text-[10px] bg-canvas-raised text-ink-muted border border-canvas-border"
-                >
-                  #{{ tag }}
-                </span>
-              </div>
             </div>
           </template>
+
+          <!-- タグセクション（いつでもタグの編集・追加・削除・AI解析が可能） -->
+          <div class="space-y-2 pt-2 border-t border-canvas-border">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-ink flex items-center gap-1.5">
+                <Tag class="w-3.5 h-3.5 text-brand" />
+                <span>タグ ({{ itemTags.length }})</span>
+              </span>
+              <button
+                type="button"
+                class="text-[11px] font-semibold text-brand hover:underline flex items-center gap-1 transition-colors"
+                :disabled="isAnalyzing"
+                @click="handleTriggerAi"
+              >
+                <Sparkles class="w-3 h-3" />
+                <span>{{ isAnalyzing ? 'AI解析中...' : 'AIで自動タグ生成' }}</span>
+              </button>
+            </div>
+
+            <!-- タグバッジ一覧 -->
+            <div class="flex flex-wrap gap-1.5 min-h-[28px] items-center">
+              <span
+                v-for="tag in itemTags"
+                :key="tag"
+                class="group inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs bg-canvas-card border border-canvas-border text-ink hover:border-brand transition-colors"
+              >
+                <span>#{{ tag }}</span>
+                <button
+                  type="button"
+                  class="text-ink-subtle hover:text-danger rounded p-0.5 transition-colors"
+                  :title="`#${tag} を削除`"
+                  :aria-label="`タグ ${tag} を削除`"
+                  @click="handleRemoveTag(tag)"
+                >
+                  <X class="w-2.5 h-2.5" />
+                </button>
+              </span>
+
+              <!-- 新規タグ入力フォーム -->
+              <form
+                v-if="isAddingTag"
+                class="inline-flex items-center gap-1"
+                @submit.prevent="handleAddTag"
+              >
+                <input
+                  ref="tagInputRef"
+                  v-model="newTagInput"
+                  type="text"
+                  placeholder="タグ名を入力..."
+                  class="w-28 px-2 py-0.5 text-xs bg-canvas-bg border border-brand rounded-lg text-ink focus:outline-none"
+                  @keydown.esc="isAddingTag = false"
+                >
+                <button
+                  type="submit"
+                  class="px-2 py-0.5 text-[10px] font-bold bg-brand text-brand-fg rounded-md"
+                  :disabled="!newTagInput.trim()"
+                >
+                  追加
+                </button>
+                <button
+                  type="button"
+                  class="p-0.5 text-ink-subtle hover:text-ink text-xs"
+                  @click="isAddingTag = false"
+                >
+                  <X class="w-3 h-3" />
+                </button>
+              </form>
+              <button
+                v-else
+                type="button"
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-canvas-bg hover:bg-canvas-card border border-dashed border-canvas-border-strong text-ink-muted hover:text-brand transition-colors"
+                @click="openAddTag"
+              >
+                <Plus class="w-3 h-3" />
+                <span>タグ追加</span>
+              </button>
+            </div>
+          </div>
 
           <!-- アクション -->
           <div class="mt-auto space-y-1.5 pt-3 border-t border-canvas-border">

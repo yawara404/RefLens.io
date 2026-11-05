@@ -103,6 +103,7 @@ export interface AuthUser {
   instagram_connected: boolean
   pixiv_connected: boolean
   pixiv_username?: string | null
+  auto_tagging?: boolean
 }
 
 export interface InstagramMediaPost {

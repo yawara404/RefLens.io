@@ -1,7 +1,7 @@
 import re
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
-from app.models.models import Board, CanvasItem, Folder, MediaItem, User
+from app.models.models import AIAnalysis, Board, CanvasItem, Folder, MediaItem, User
 from app.routers.auth import get_current_user
 from app.routers.media import perform_ai_analysis
 from app.services.pixiv_ai_policy import resolve_pixiv_ai_policy
@@ -27,12 +27,19 @@ class BookmarkAddRequest(BaseModel):
     board_id: Optional[str] = None # 即座にボードに並べる場合は指定
     pos_x: Optional[float] = 0.0
     pos_y: Optional[float] = 0.0
+    auto_tag: Optional[bool] = None
 
 class PlaceBookmarkRequest(BaseModel):
     board_id: str
     bookmark_id: str
     pos_x: float = 0.0
     pos_y: float = 0.0
+
+class UpdateTagsRequest(BaseModel):
+    tags: List[str]
+
+class AddTagRequest(BaseModel):
+    tag: str
 
 class FolderCreateRequest(BaseModel):
     name: str
@@ -432,14 +439,18 @@ async def add_bookmark(
         db.commit()
         db.refresh(canvas_item)
 
-    # バックグラウンドAI解析（pixiv作品なら取得元タグもマージする）
-    background_tasks.add_task(
-        perform_ai_analysis,
-        media_item.id,
-        str(saved_path),
-        SessionLocal,
-        list(meta.get("tags") or [])[:12],
+    # バックグラウンドAI解析（自動タグ付けが有効な場合のみ実行）
+    should_analyze = (
+        payload.auto_tag if payload.auto_tag is not None else getattr(user, "auto_tagging", True)
     )
+    if should_analyze:
+        background_tasks.add_task(
+            perform_ai_analysis,
+            media_item.id,
+            str(saved_path),
+            SessionLocal,
+            list(meta.get("tags") or [])[:12],
+        )
 
     return {
         "success": True,
@@ -572,6 +583,132 @@ def update_bookmark_folder(
     media.folder_name = payload.folder_name
     db.commit()
     return {"message": "Folder updated"}
+
+@router.put("/{bookmark_id}/tags")
+def update_bookmark_tags(
+    bookmark_id: str,
+    payload: UpdateTagsRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """ブックマークのタグ一覧を編集・更新する"""
+    media = db.query(MediaItem).filter(MediaItem.id == bookmark_id, MediaItem.user_id == user.id).first()
+    if not media:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+
+    cleaned_tags = []
+    seen = set()
+    for t in payload.tags:
+        t_clean = t.strip().lstrip("#")
+        if t_clean and t_clean.lower() not in seen:
+            seen.add(t_clean.lower())
+            cleaned_tags.append(t_clean)
+
+    ai = db.query(AIAnalysis).filter(AIAnalysis.media_item_id == media.id).first()
+    if ai:
+        ai.tags_json = cleaned_tags
+    else:
+        ai = AIAnalysis(
+            media_item_id=media.id,
+            composition="",
+            lighting="",
+            pose_anatomy="",
+            costume_structure="",
+            palette_json=[],
+            tags_json=cleaned_tags,
+            analysis_model="custom",
+        )
+        db.add(ai)
+    db.commit()
+    db.refresh(ai)
+    return {"success": True, "bookmark_id": media.id, "tags": ai.tags_json}
+
+@router.post("/{bookmark_id}/tags")
+def add_bookmark_tag(
+    bookmark_id: str,
+    payload: AddTagRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """ブックマークにタグを追加する"""
+    tag = payload.tag.strip().lstrip("#")
+    if not tag:
+        raise HTTPException(status_code=400, detail="Tag cannot be empty")
+
+    media = db.query(MediaItem).filter(MediaItem.id == bookmark_id, MediaItem.user_id == user.id).first()
+    if not media:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+
+    ai = db.query(AIAnalysis).filter(AIAnalysis.media_item_id == media.id).first()
+    tags = list(ai.tags_json or []) if ai else []
+    if tag.lower() not in [t.lower() for t in tags]:
+        tags.append(tag)
+
+    if ai:
+        ai.tags_json = tags
+    else:
+        ai = AIAnalysis(
+            media_item_id=media.id,
+            composition="",
+            lighting="",
+            pose_anatomy="",
+            costume_structure="",
+            palette_json=[],
+            tags_json=tags,
+            analysis_model="custom",
+        )
+        db.add(ai)
+    db.commit()
+    db.refresh(ai)
+    return {"success": True, "bookmark_id": media.id, "tags": ai.tags_json}
+
+@router.delete("/{bookmark_id}/tags/{tag}")
+def delete_bookmark_tag(
+    bookmark_id: str,
+    tag: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """ブックマークから特定のタグを削除する"""
+    media = db.query(MediaItem).filter(MediaItem.id == bookmark_id, MediaItem.user_id == user.id).first()
+    if not media:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+
+    ai = db.query(AIAnalysis).filter(AIAnalysis.media_item_id == media.id).first()
+    if ai and ai.tags_json:
+        clean = tag.strip().lstrip("#").lower()
+        ai.tags_json = [t for t in ai.tags_json if t.lower() != clean]
+        db.commit()
+        db.refresh(ai)
+        return {"success": True, "bookmark_id": media.id, "tags": ai.tags_json}
+    return {"success": True, "bookmark_id": media.id, "tags": []}
+
+@router.post("/{bookmark_id}/analyze")
+async def manual_analyze_bookmark(
+    bookmark_id: str,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """ブックマークに対して手動でAIタグ・解析を実行する"""
+    media = db.query(MediaItem).filter(MediaItem.id == bookmark_id, MediaItem.user_id == user.id).first()
+    if not media:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+
+    file_name = Path(media.file_path).name
+    saved_path = settings.UPLOAD_DIR / file_name
+    if not saved_path.exists():
+        raise HTTPException(status_code=404, detail="Media file not found on disk")
+
+    background_tasks.add_task(
+        perform_ai_analysis,
+        media.id,
+        str(saved_path),
+        SessionLocal,
+        None,
+        True,
+    )
+    return {"success": True, "message": "AI analysis started in background"}
 
 @router.delete("/{bookmark_id}")
 def delete_bookmark(

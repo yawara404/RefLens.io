@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import {
   LogIn, LogOut, Pencil, Unlink, Check, Save, AlertCircle, ExternalLink,
-  User, Instagram, Compass, ChevronRight
+  User, Instagram, Compass, ChevronRight, Sparkles
 } from 'lucide-vue-next'
 import { useAuthStore } from '~/stores/authStore'
 import { useToast } from '~/composables/useToast'
@@ -79,6 +79,12 @@ async function saveUsername() {
   } finally {
     savingName.value = false
   }
+}
+
+async function toggleAutoTagging() {
+  const next = !auth.autoTagging
+  await auth.setAutoTagging(next)
+  toast.success(next ? '自動AIタグ付けを有効にしました' : '自動AIタグ付けを無効にしました')
 }
 
 /** PixivConnectDialog（app.vue に配置済み）を開く */
@@ -196,6 +202,42 @@ function handleUsernameChange(e: Event) {
           <p class="text-[11px] leading-relaxed text-ink-subtle">
             半角英数字・アンダースコア・日本語のみ利用できます（100文字まで）。
           </p>
+        </div>
+      </section>
+
+      <!-- リファレンス機能設定 -->
+      <section
+        class="rounded-2xl border border-canvas-border bg-canvas-panel p-5 sm:p-6"
+        aria-labelledby="account-preferences-heading"
+      >
+        <h2 id="account-preferences-heading" class="text-sm font-bold text-ink flex items-center gap-2">
+          <Sparkles class="w-4 h-4 text-brand" />
+          <span>リファレンス設定</span>
+        </h2>
+        <p class="mt-1 text-[11px] text-ink-subtle">
+          資料取り込み時の自動処理やAI解析の動作を設定します。
+        </p>
+
+        <div class="mt-4 pt-4 border-t border-canvas-border flex items-center justify-between gap-4">
+          <div class="space-y-0.5 min-w-0 flex-1">
+            <p class="text-xs font-bold text-ink">自動AIタグ付け</p>
+            <p class="text-[11px] text-ink-muted leading-relaxed">
+              URL追加、pixiv取り込み、画像アップロード時に、AIが自動で構図・ライティング・属性タグを解析・付与します。
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="auth.autoTagging"
+            class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2"
+            :class="auth.autoTagging ? 'bg-brand' : 'bg-canvas-card border-canvas-border-strong'"
+            @click="toggleAutoTagging"
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out"
+              :class="auth.autoTagging ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </button>
         </div>
       </section>
 

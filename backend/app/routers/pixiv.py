@@ -684,14 +684,15 @@ async def _stock_one_illust(
         db.commit()
         db.refresh(media_item)
 
-        # pixivの実タグ + Vision/heuristic解析（Geminiがあれば構図・光も解析される）
-        background_tasks.add_task(
-            perform_ai_analysis,
-            media_item.id,
-            str(saved_path),
-            SessionLocal,
-            list(illust.get("tags") or [])[:12],
-        )
+        # pixivの実タグ + Vision/heuristic解析（自動タグ付けが有効な場合のみ実行）
+        if getattr(user, "auto_tagging", True):
+            background_tasks.add_task(
+                perform_ai_analysis,
+                media_item.id,
+                str(saved_path),
+                SessionLocal,
+                list(illust.get("tags") or [])[:12],
+            )
 
         entry = {"media_item_id": media_item.id, "reused": False, "page_index": source_page_index}
         if board_id:

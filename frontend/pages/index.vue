@@ -34,12 +34,14 @@ import FolderActionsMenu from '~/components/ui/FolderActionsMenu.vue'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import type { BookmarkItem, FolderItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
+import { useAuthStore } from '~/stores/authStore'
 import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useToast } from '~/composables/useToast'
 import { useImageProcessor } from '~/composables/useImageProcessor'
 import { useMobileNav } from '~/composables/useMobileNav'
 
 const boardStore = useBoardStore()
+const auth = useAuthStore()
 const toast = useToast()
 const { resolveMediaUrl } = useMediaUrl()
 const { copyToClipboard, extractImagesFromDataTransfer } = useImageProcessor()
@@ -1266,6 +1268,21 @@ onMounted(async () => {
                 placeholder="保存先フォルダ"
                 button-class="text-xs h-8 sm:h-9"
               />
+              <button
+                type="button"
+                class="px-2.5 py-1.5 sm:py-2 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1 shrink-0 h-8 sm:h-9"
+                :class="auth.autoTagging
+                  ? 'bg-brand-soft text-brand border-brand/40 font-bold'
+                  : 'bg-canvas-card text-ink-muted border-canvas-border hover:text-ink'"
+                :title="auth.autoTagging ? '自動AIタグ付け: ON（クリックでOFFに切替）' : '自動AIタグ付け: OFF（クリックでONに切替）'"
+                @click="auth.setAutoTagging(!auth.autoTagging)"
+              >
+                <Sparkles class="w-3.5 h-3.5" :class="auth.autoTagging ? 'text-brand' : 'opacity-40'" />
+                <span class="text-[11px] hidden sm:inline">自動タグ</span>
+                <span class="text-[10px] font-mono px-1 py-0.2 rounded" :class="auth.autoTagging ? 'bg-brand/15 text-brand' : 'bg-canvas-panel text-ink-subtle'">
+                  {{ auth.autoTagging ? 'ON' : 'OFF' }}
+                </span>
+              </button>
               <button
                 type="button"
                 class="px-3 sm:px-4 py-1.5 sm:py-2 bg-brand text-brand-fg hover:bg-brand-hover rounded-xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0 h-8 sm:h-9"

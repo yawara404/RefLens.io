@@ -45,6 +45,7 @@ class UserOut(BaseModel):
     instagram_connected: bool = False
     pixiv_connected: bool = False
     pixiv_username: Optional[str] = None
+    auto_tagging: bool = True
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
@@ -181,11 +182,33 @@ def get_me(user: User = Depends(get_current_user)):
         "instagram_connected": user.instagram_account is not None,
         "pixiv_connected": user.pixiv_account is not None,
         "pixiv_username": user.pixiv_account.pixiv_username if user.pixiv_account else None,
+        "auto_tagging": getattr(user, "auto_tagging", True),
     }
 
 
 class ProfileUpdate(BaseModel):
     username: str = Field(min_length=1, max_length=100)
+
+
+class PreferencesUpdate(BaseModel):
+    auto_tagging: Optional[bool] = None
+
+
+@router.put("/preferences")
+def update_preferences(
+    payload: PreferencesUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """ユーザー設定（自動タグ付け等）を更新する。"""
+    if payload.auto_tagging is not None:
+        user.auto_tagging = payload.auto_tagging
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return {
+        "auto_tagging": getattr(user, "auto_tagging", True)
+    }
 
 
 @router.put("/me", response_model=UserOut)

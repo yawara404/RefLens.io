@@ -45,6 +45,7 @@ def _migrate_add_columns():
         ("media_items", "pixiv_illust_id", "VARCHAR(100)"),
         ("media_items", "pixiv_page_index", "INTEGER"),
         ("media_items", "ai_analysis_policy", "VARCHAR(20) NOT NULL DEFAULT 'unknown'"),
+        ("users", "auto_tagging", "BOOLEAN NOT NULL DEFAULT 1"),
     ]
 
     with engine.connect() as conn:

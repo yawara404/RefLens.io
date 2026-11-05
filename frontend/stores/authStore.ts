@@ -19,6 +19,7 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: '',
     user: null as AuthUser | null,
+    autoTagging: true,
     /** クライアント起動時に一度だけトークンを復元する */
     isReady: false,
     restoreRetryScheduled: false,
@@ -99,6 +100,9 @@ export const useAuthStore = defineStore('auth', {
           this.clear()
         } else {
           this.user = user
+          if (typeof user.auto_tagging === 'boolean') {
+            this.autoTagging = user.auto_tagging
+          }
           this.notifyChanged()
         }
       } catch (error: any) {
@@ -124,6 +128,10 @@ export const useAuthStore = defineStore('auth', {
       if (typeof window !== 'undefined') {
         try {
           this.token = window.localStorage.getItem(STORAGE_KEY) || ''
+          const savedAutoTag = window.localStorage.getItem('reflens-auto-tagging')
+          if (savedAutoTag !== null) {
+            this.autoTagging = savedAutoTag === 'true'
+          }
         } catch {
           this.token = ''
         }
@@ -134,6 +142,29 @@ export const useAuthStore = defineStore('auth', {
       }
 
       this.isReady = true
+    },
+
+    async setAutoTagging(enabled: boolean) {
+      this.autoTagging = enabled
+      if (this.user) {
+        this.user.auto_tagging = enabled
+      }
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem('reflens-auto-tagging', enabled ? 'true' : 'false')
+        } catch {
+          /* ignore */
+        }
+      }
+      try {
+        await $fetch(this.api('/auth/preferences'), {
+          method: 'PUT',
+          headers: this.authHeaders(),
+          body: { auto_tagging: enabled },
+        })
+      } catch (e) {
+        console.warn('Failed to sync auto_tagging preference to backend:', e)
+      }
     },
 
     async login(email: string, password: string) {

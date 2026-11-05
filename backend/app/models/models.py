@@ -18,6 +18,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=True)
     avatar_url = Column(String(500), nullable=True)
     instagram_user_id = Column(String(100), nullable=True)
+    auto_tagging = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

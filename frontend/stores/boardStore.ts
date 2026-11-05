@@ -457,6 +457,139 @@ export const useBoardStore = defineStore('board', {
       }
     },
 
+    async updateBookmarkTags(bookmarkId: string, tags: string[]) {
+      try {
+        const res = await $fetch<{ success: boolean; tags: string[] }>(
+          this.api(`/bookmarks/${bookmarkId}/tags`),
+          {
+            method: 'PUT',
+            body: { tags },
+          }
+        )
+        const b = this.bookmarks.find(item => item.id === bookmarkId)
+        if (b) {
+          if (!b.ai_analysis) {
+            b.ai_analysis = {
+              composition: '',
+              lighting: '',
+              pose_anatomy: '',
+              costume_structure: '',
+              palette: [],
+              tags: res.tags,
+            }
+          } else {
+            b.ai_analysis.tags = res.tags
+          }
+        }
+        if (this.quickLookItem && this.quickLookItem.id === bookmarkId) {
+          if (!this.quickLookItem.ai_analysis) {
+            this.quickLookItem.ai_analysis = {
+              composition: '',
+              lighting: '',
+              pose_anatomy: '',
+              costume_structure: '',
+              palette: [],
+              tags: res.tags,
+            }
+          } else {
+            this.quickLookItem.ai_analysis.tags = res.tags
+          }
+        }
+        return res.tags
+      } catch (e: any) {
+        console.error('Update bookmark tags failed:', e)
+        useToast().error('タグの更新に失敗しました', e?.data?.detail || e?.message)
+        return null
+      }
+    },
+
+    async addBookmarkTag(bookmarkId: string, tag: string) {
+      try {
+        const res = await $fetch<{ success: boolean; tags: string[] }>(
+          this.api(`/bookmarks/${bookmarkId}/tags`),
+          {
+            method: 'POST',
+            body: { tag },
+          }
+        )
+        const b = this.bookmarks.find(item => item.id === bookmarkId)
+        if (b) {
+          if (!b.ai_analysis) {
+            b.ai_analysis = {
+              composition: '',
+              lighting: '',
+              pose_anatomy: '',
+              costume_structure: '',
+              palette: [],
+              tags: res.tags,
+            }
+          } else {
+            b.ai_analysis.tags = res.tags
+          }
+        }
+        if (this.quickLookItem && this.quickLookItem.id === bookmarkId) {
+          if (!this.quickLookItem.ai_analysis) {
+            this.quickLookItem.ai_analysis = {
+              composition: '',
+              lighting: '',
+              pose_anatomy: '',
+              costume_structure: '',
+              palette: [],
+              tags: res.tags,
+            }
+          } else {
+            this.quickLookItem.ai_analysis.tags = res.tags
+          }
+        }
+        return res.tags
+      } catch (e: any) {
+        console.error('Add bookmark tag failed:', e)
+        useToast().error('タグの追加に失敗しました', e?.data?.detail || e?.message)
+        return null
+      }
+    },
+
+    async removeBookmarkTag(bookmarkId: string, tag: string) {
+      try {
+        const res = await $fetch<{ success: boolean; tags: string[] }>(
+          this.api(`/bookmarks/${bookmarkId}/tags/${encodeURIComponent(tag)}`),
+          {
+            method: 'DELETE',
+          }
+        )
+        const b = this.bookmarks.find(item => item.id === bookmarkId)
+        if (b && b.ai_analysis) {
+          b.ai_analysis.tags = res.tags
+        }
+        if (this.quickLookItem && this.quickLookItem.id === bookmarkId && this.quickLookItem.ai_analysis) {
+          this.quickLookItem.ai_analysis.tags = res.tags
+        }
+        return res.tags
+      } catch (e: any) {
+        console.error('Delete bookmark tag failed:', e)
+        useToast().error('タグの削除に失敗しました', e?.data?.detail || e?.message)
+        return null
+      }
+    },
+
+    async triggerAiAnalysis(bookmarkId: string) {
+      try {
+        await $fetch(this.api(`/bookmarks/${bookmarkId}/analyze`), { method: 'POST' })
+        useToast().success('AI解析を開始しました', '完了後に自動でタグが反映されます')
+        setTimeout(async () => {
+          await this.fetchBookmarks()
+          if (this.quickLookItem && this.quickLookItem.id === bookmarkId) {
+            const updated = this.bookmarks.find(b => b.id === bookmarkId)
+            if (updated) this.quickLookItem = updated
+          }
+        }, 3000)
+        return true
+      } catch (e: any) {
+        useToast().error('AI解析の開始に失敗しました', e?.data?.detail || e?.message)
+        return false
+      }
+    },
+
     toggleBrowser() {
       this.isBrowserOpen = !this.isBrowserOpen
     },
