@@ -47,6 +47,7 @@ export default defineNuxtConfig({
         },
         { name: 'robots', content: 'index, follow, max-image-preview:large' },
         { name: 'theme-color', content: '#4338ca' },
+        { name: 'google-site-verification', content: 'QEND1wFNaZp1AQkewXw8BQcRELQNfWwU_W_G9aUs5XQ' },
 
         // OGP
         { property: 'og:site_name', content: 'RefLens.io' },
