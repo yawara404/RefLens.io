@@ -1,17 +1,14 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { FolderOpen, Compass, Layers, Keyboard, Menu, X, Info, Shield, FileText, HelpCircle } from 'lucide-vue-next'
+import { FolderOpen, Compass, Layers, Menu, X, Info, Shield, FileText, HelpCircle } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
-import { useHelpStore } from '~/stores/helpStore'
 import { useMobileNav } from '~/composables/useMobileNav'
 import ThemeToggle from '~/components/ui/ThemeToggle.vue'
 import AuthButton from '~/components/ui/AuthButton.vue'
-import SiteInfoMenu from '~/components/ui/SiteInfoMenu.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
 
 const route = useRoute()
 const boardStore = useBoardStore()
-const helpStore = useHelpStore()
 const mobileNav = useMobileNav()
 
 const NAV_ITEMS = [
@@ -109,36 +106,24 @@ watch(() => route.fullPath, () => {
       </NuxtLink>
     </nav>
 
-    <!-- 右: アクション（モバイルでは見切れ防止のため主要操作のみ表示） -->
+    <!-- 右: アクション（一番右にヘルプ専用ページへのナビゲーションを統合配置） -->
     <div class="flex items-center gap-1.5 sm:gap-2 justify-self-end shrink-0">
       <AuthButton />
+      <ThemeToggle />
 
-      <!-- ヘルプ（Tunedrop風の専用ページへの遷移ボタン） -->
+      <!-- ヘルプ（Tunedrop風の専用ページへの遷移ボタン: 一番右に統合） -->
       <NuxtLink
         to="/help"
-        class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors border select-none"
+        class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border select-none"
         :class="route.path === '/help'
           ? 'bg-brand text-brand-fg border-brand shadow-sm'
-          : 'text-ink hover:text-brand hover:bg-canvas-hover border-canvas-border-strong'"
-        title="使い方・操作ガイド"
-        aria-label="使い方・操作ガイド"
+          : 'text-ink hover:text-brand hover:bg-canvas-hover border-canvas-border-strong bg-canvas-card'"
+        title="使い方・操作ガイド（ヘルプ）"
+        aria-label="使い方・操作ガイド（ヘルプ）"
       >
-        <HelpCircle class="w-3.5 h-3.5 shrink-0" :class="route.path === '/help' ? 'text-white' : 'text-brand'" />
+        <HelpCircle class="w-4 h-4 shrink-0" :class="route.path === '/help' ? 'text-white' : 'text-brand'" />
         <span class="hidden sm:inline">ヘルプ</span>
       </NuxtLink>
-
-      <button
-        type="button"
-        class="hidden lg:inline-flex p-2 rounded-xl text-ink hover:text-brand hover:bg-canvas-hover border border-canvas-border-strong transition-colors"
-        title="キーボードショートカット（?）"
-        aria-label="キーボードショートカット"
-        @click="helpStore.toggle()"
-      >
-        <Keyboard class="w-4 h-4" />
-      </button>
-
-      <ThemeToggle />
-      <SiteInfoMenu class="hidden sm:block" />
     </div>
   </header>
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FolderOpen, Compass, Layers, HelpCircle } from 'lucide-vue-next'
+import { FolderOpen, Compass, Layers, HelpCircle, Info } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
 import { useMobileNav } from '~/composables/useMobileNav'
 
@@ -89,18 +89,18 @@ function openSiteInfoModal() {
       </NuxtLink>
     </nav>
 
-    <!-- サイト情報3項目（概要・プライバシー・利用規約）を1ボタンからポップアップモーダルで表示 -->
-    <button
+    <!-- サイト情報・ポリシーへのリンク -->
+    <NuxtLink
       v-if="showSiteLinks"
-      type="button"
+      to="/help#help-site"
       class="w-full flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold text-ink bg-canvas-bg hover:bg-canvas-hover border border-canvas-border-strong transition-colors"
-      @click="openSiteInfoModal"
+      @click="handleSelect"
     >
       <span class="flex items-center gap-2.5">
-        <HelpCircle class="w-4 h-4 text-brand shrink-0" />
-        <span>サイト情報・利用規約</span>
+        <Info class="w-4 h-4 text-brand shrink-0" />
+        <span>サイト情報・規約</span>
       </span>
       <span class="text-[10px] font-mono font-semibold text-ink-muted">詳細</span>
-    </button>
+    </NuxtLink>
   </div>
 </template>

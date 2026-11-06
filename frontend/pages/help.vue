@@ -542,6 +542,33 @@ const SHORTCUT_GROUPS = [
             </dd>
           </dl>
 
+          <!-- サイトポリシー詳細（Tunedrop風の各条文セクション） -->
+          <div class="space-y-4 pt-2 border-t border-canvas-border text-xs sm:text-sm">
+            <div id="help-privacy" class="p-4 rounded-xl bg-canvas-bg border border-canvas-border space-y-2">
+              <h3 class="font-bold text-ink flex items-center gap-2">
+                <Shield class="w-4 h-4 text-brand" />
+                <span>プライバシーポリシーの要約</span>
+              </h3>
+              <p>取得・保存する情報: アカウント登録時のメールアドレス、ユーザー名、ログイン情報、保存した画像・URL・ブックマーク・ボード・AI解析結果を安全に管理します。</p>
+              <p>利用目的: ログイン状態の維持、ライブラリ・キャンバスの保存・同期、画像のキャッシュ表示、AI解析にのみ利用します。第三者への提供や広告追跡等は行いません。</p>
+              <NuxtLink to="/privacy" class="inline-flex items-center gap-1 text-xs text-brand font-bold hover:underline">
+                プライバシーポリシーの全文を読む &rarr;
+              </NuxtLink>
+            </div>
+
+            <div id="help-terms" class="p-4 rounded-xl bg-canvas-bg border border-canvas-border space-y-2">
+              <h3 class="font-bold text-ink flex items-center gap-2">
+                <FileText class="w-4 h-4 text-brand" />
+                <span>利用上の注意・免責事項</span>
+              </h3>
+              <p>作品と外部サービス: 各作品の著作権は権利者に帰属します。画像の保存・参照にあたっては各権利者の意図および各サービスの利用規約を遵守してください。</p>
+              <p>AI解析機能: AI解析は作品の利用許諾を判定する機能ではありません。また、外部通信障害や仕様変更により一部機能が利用できない場合があります。</p>
+              <NuxtLink to="/terms" class="inline-flex items-center gap-1 text-xs text-brand font-bold hover:underline">
+                利用上の注意の全文を読む &rarr;
+              </NuxtLink>
+            </div>
+          </div>
+
           <div class="p-4 rounded-xl bg-canvas-bg border border-canvas-border text-xs text-ink-subtle">
             困ったときは、このページの内容を確認するか、表示や動作がおかしい場合はブラウザのスーパーリロード（<kbd class="px-1 py-0.5 rounded bg-canvas-panel border border-canvas-border font-mono">Cmd + Shift + R</kbd> / <kbd class="px-1 py-0.5 rounded bg-canvas-panel border border-canvas-border font-mono">Ctrl + F5</kbd>）をお試しください。
           </div>
@@ -566,3 +593,4 @@ const SHORTCUT_GROUPS = [
     </footer>
   </div>
 </template>
+
