@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { FolderOpen, Compass, Layers, Menu, X, Info, Shield, FileText, HelpCircle } from 'lucide-vue-next'
+import { FolderOpen, Compass, Layers, Menu, X, Info, Shield, FileText, HelpCircle, Keyboard } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
+import { useHelpStore } from '~/stores/helpStore'
 import { useMobileNav } from '~/composables/useMobileNav'
 import ThemeToggle from '~/components/ui/ThemeToggle.vue'
 import AuthButton from '~/components/ui/AuthButton.vue'
@@ -9,6 +10,7 @@ import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
 
 const route = useRoute()
 const boardStore = useBoardStore()
+const helpStore = useHelpStore()
 const mobileNav = useMobileNav()
 
 const NAV_ITEMS = [
@@ -106,12 +108,24 @@ watch(() => route.fullPath, () => {
       </NuxtLink>
     </nav>
 
-    <!-- 右: アクション（一番右にヘルプ専用ページへのナビゲーションを統合配置） -->
+    <!-- 右: アクション（ショートカットモーダル + テーマ切替 + 一番右にヘルプ専用ページ） -->
     <div class="flex items-center gap-1.5 sm:gap-2 justify-self-end shrink-0">
       <AuthButton />
+
+      <!-- キーボードショートカット一覧モーダル呼び出し -->
+      <button
+        type="button"
+        class="hidden sm:inline-flex p-2 rounded-xl text-ink hover:text-brand hover:bg-canvas-hover border border-canvas-border-strong bg-canvas-card transition-colors select-none"
+        title="キーボードショートカット（?）"
+        aria-label="キーボードショートカット一覧を開く"
+        @click="helpStore.toggle()"
+      >
+        <Keyboard class="w-4 h-4" />
+      </button>
+
       <ThemeToggle />
 
-      <!-- ヘルプ（Tunedrop風の専用ページへの遷移ボタン: 一番右に統合） -->
+      <!-- ヘルプ（Tunedrop風の専用ページへの遷移ボタン: 一番右に配置） -->
       <NuxtLink
         to="/help"
         class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border select-none"
