@@ -73,6 +73,20 @@ function openSiteInfoModal() {
         />
         <span class="truncate">{{ item.label }}</span>
       </NuxtLink>
+
+      <!-- 使い方・ヘルプ専用ページへのリンク -->
+      <NuxtLink
+        to="/help"
+        class="w-full flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-colors"
+        :class="route.path === '/help'
+          ? 'text-brand font-bold bg-brand-soft ring-1 ring-inset ring-brand/30'
+          : 'text-ink hover:bg-canvas-hover font-semibold'"
+        :aria-current="route.path === '/help' ? 'page' : undefined"
+        @click="handleSelect"
+      >
+        <HelpCircle class="w-4 h-4 shrink-0" :class="route.path === '/help' ? 'text-brand' : 'text-ink-muted'" />
+        <span class="truncate">使い方・ヘルプ</span>
+      </NuxtLink>
     </nav>
 
     <!-- サイト情報3項目（概要・プライバシー・利用規約）を1ボタンからポップアップモーダルで表示 -->

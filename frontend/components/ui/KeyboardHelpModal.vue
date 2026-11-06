@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
-import { X, Keyboard, MousePointer2, Hand, Layers, Wand2, ZoomIn } from 'lucide-vue-next'
+import { X, Keyboard, MousePointer2, Hand, Layers, Wand2, ZoomIn, HelpCircle } from 'lucide-vue-next'
 import { useHelpStore } from '~/stores/helpStore'
 
 const helpStore = useHelpStore()
@@ -154,16 +154,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
           </section>
         </div>
 
-        <!-- 補足 -->
-        <div class="px-5 pb-5">
-          <div class="rounded-xl border border-canvas-border bg-canvas-card px-4 py-3 text-[11px] text-ink-muted leading-relaxed">
-            <p class="font-semibold text-ink mb-1">ヒント</p>
-            <ul class="list-disc pl-4 space-y-0.5">
-              <li>URL・検索などの入力欄にフォーカス中は、ショートカットは実行されません。</li>
-              <li>「+」の表記は、同時押しではなく「キーを押したまま次のキーを押す」操作です。</li>
-              <li>右クリック（または長押し）でアイテムの操作メニューが開きます。</li>
-            </ul>
+        <!-- 補足 & 総合マニュアルへのリンク -->
+        <div class="px-5 pb-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div class="rounded-xl border border-canvas-border bg-canvas-card px-4 py-2.5 text-[11px] text-ink-muted leading-relaxed flex-1">
+            <span class="font-semibold text-ink">ヒント: </span>
+            <span>文字入力中やダイアログ表示中はショートカットは無効になります。「+」表記はキーを押しながら次のキーを押す操作です。</span>
           </div>
+          <NuxtLink
+            to="/help"
+            class="px-3.5 py-2 rounded-xl text-xs font-bold bg-brand text-brand-fg hover:bg-brand-hover transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-sm"
+            @click="helpStore.close()"
+          >
+            <HelpCircle class="w-3.5 h-3.5" />
+            <span>詳しい使い方・操作ガイドを見る</span>
+          </NuxtLink>
         </div>
       </div>
     </div>

@@ -19,6 +19,7 @@ defineProps<{ title: string; updated?: string; eyebrow?: string }>()
     <footer class="border-t border-canvas-border bg-canvas-panel px-5 py-5 text-xs text-ink-muted">
       <nav class="max-w-3xl mx-auto flex flex-wrap items-center gap-x-5 gap-y-2" aria-label="フッターナビゲーション">
         <span class="font-semibold text-ink">RefLens.io</span>
+        <NuxtLink to="/help" class="text-brand font-bold hover:underline">使い方・ヘルプ</NuxtLink>
         <NuxtLink to="/about" class="hover:text-brand">このサイトについて</NuxtLink>
         <NuxtLink to="/privacy" class="hover:text-brand">プライバシー</NuxtLink>
         <NuxtLink to="/terms" class="hover:text-brand">利用上の注意</NuxtLink>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { FolderOpen, Compass, Layers, Keyboard, Menu, X, Info, Shield, FileText } from 'lucide-vue-next'
+import { FolderOpen, Compass, Layers, Keyboard, Menu, X, Info, Shield, FileText, HelpCircle } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
 import { useHelpStore } from '~/stores/helpStore'
 import { useMobileNav } from '~/composables/useMobileNav'
@@ -113,9 +113,23 @@ watch(() => route.fullPath, () => {
     <div class="flex items-center gap-1.5 sm:gap-2 justify-self-end shrink-0">
       <AuthButton />
 
+      <!-- ヘルプ（Tunedrop風の専用ページへの遷移ボタン） -->
+      <NuxtLink
+        to="/help"
+        class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors border select-none"
+        :class="route.path === '/help'
+          ? 'bg-brand text-brand-fg border-brand shadow-sm'
+          : 'text-ink hover:text-brand hover:bg-canvas-hover border-canvas-border-strong'"
+        title="使い方・操作ガイド"
+        aria-label="使い方・操作ガイド"
+      >
+        <HelpCircle class="w-3.5 h-3.5 shrink-0" :class="route.path === '/help' ? 'text-white' : 'text-brand'" />
+        <span class="hidden sm:inline">ヘルプ</span>
+      </NuxtLink>
+
       <button
         type="button"
-        class="hidden md:inline-flex p-2 rounded-xl text-ink hover:text-brand hover:bg-canvas-hover border border-canvas-border-strong transition-colors"
+        class="hidden lg:inline-flex p-2 rounded-xl text-ink hover:text-brand hover:bg-canvas-hover border border-canvas-border-strong transition-colors"
         title="キーボードショートカット（?）"
         aria-label="キーボードショートカット"
         @click="helpStore.toggle()"

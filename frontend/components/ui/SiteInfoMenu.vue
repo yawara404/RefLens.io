@@ -175,14 +175,25 @@ onBeforeUnmount(() => {
 
           <!-- モーダルフッター -->
           <div class="px-4 py-3 border-t border-canvas-border bg-canvas-bg/40 flex items-center justify-between gap-2 shrink-0">
-            <button
-              type="button"
-              class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-canvas-panel hover:bg-canvas-hover text-ink border border-canvas-border-strong transition-colors flex items-center gap-1.5"
-              @click="openShortcuts"
-            >
-              <Keyboard class="w-3.5 h-3.5 text-brand" />
-              <span>ショートカット一覧</span>
-            </button>
+            <div class="flex items-center gap-2">
+              <NuxtLink
+                to="/help"
+                class="px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-soft hover:bg-brand text-brand hover:text-brand-fg border border-brand/30 transition-colors flex items-center gap-1.5"
+                @click="close"
+              >
+                <HelpCircle class="w-3.5 h-3.5 shrink-0" />
+                <span>使い方・操作マニュアル</span>
+              </NuxtLink>
+
+              <button
+                type="button"
+                class="hidden sm:inline-flex px-3 py-1.5 rounded-xl text-xs font-semibold bg-canvas-panel hover:bg-canvas-hover text-ink border border-canvas-border-strong transition-colors items-center gap-1.5"
+                @click="openShortcuts"
+              >
+                <Keyboard class="w-3.5 h-3.5 text-brand" />
+                <span>ショートカット</span>
+              </button>
+            </div>
 
             <button
               type="button"
