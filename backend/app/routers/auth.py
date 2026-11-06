@@ -1,11 +1,15 @@
 import base64
 import hashlib
+import json
+import logging
+import re
 import secrets
 import time
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import parse_qs, urlencode, urlparse
 
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -56,7 +60,71 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 # ゲスト（未ログイン時に自動割り当てされる）アカウントの識別子
 GUEST_EMAIL = "creator@reflens.io"
 PIXIV_CALLBACK = "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback"
-_pixiv_pending: dict[str, tuple[str, float, str, Optional[str]]] = {}
+# PKCE の state を保持する時間（認可コード自体の寿命はこれよりずっと短い）
+PIXIV_STATE_TTL = 600
+_PIXIV_STATE_CONTEXT = "reflens-pixiv-pkce-state:"
+# Pixiv の認可コードは URL-safe base64 相当の文字だけで構成される
+_PIXIV_CODE_RE = re.compile(r"^[A-Za-z0-9._~+/=-]+$")
+
+logger = logging.getLogger(__name__)
+
+
+def _pixiv_state_cipher() -> Fernet:
+    """PKCE の verifier を包む鍵。
+
+    以前はプロセス内の dict に verifier を置いていたが、バックエンドを再起動
+    したり複数プロセスで受けると state を見失って必ず失敗していた。設定値から
+    決定的に導出した鍵で state 自体に verifier を埋め込むことで、再起動をまたいでも
+    ログインを完了できるようにする。
+    """
+    secret = settings.PIXIV_TOKEN_ENCRYPTION_KEY or settings.SECRET_KEY
+    digest = hashlib.sha256(f"{_PIXIV_STATE_CONTEXT}{secret}".encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _encode_pixiv_state(verifier: str, mode: str, user_id: Optional[str]) -> str:
+    payload = json.dumps(
+        {"v": verifier, "m": mode, "u": user_id}, separators=(",", ":")
+    )
+    return _pixiv_state_cipher().encrypt(payload.encode()).decode()
+
+
+def _decode_pixiv_state(state: str) -> Optional[Tuple[str, str, Optional[str]]]:
+    """state を復号する。改ざん・期限切れ・形式不正は None。"""
+    try:
+        raw = _pixiv_state_cipher().decrypt(str(state).encode(), ttl=PIXIV_STATE_TTL)
+        data = json.loads(raw)
+    except (InvalidToken, ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    verifier = data.get("v")
+    mode = data.get("m")
+    user_id = data.get("u")
+    if not isinstance(verifier, str) or len(verifier) < 32:
+        return None
+    if mode not in {"login", "link"}:
+        return None
+    if user_id is not None and not isinstance(user_id, str):
+        return None
+    return verifier, mode, user_id
+
+
+# 同じ state の使い回しを防ぐ。状態そのものは再起動をまたいで復号できるが、
+# 一度使った state の記録はプロセス内のみでよい（Pixiv の認可コード自体が1回限りのため）。
+_used_pixiv_states: dict[str, float] = {}
+
+
+def _mark_pixiv_state_used(state: str) -> bool:
+    """未使用なら True。使用済み・再利用なら False。"""
+    now = time.time()
+    for key, expires in list(_used_pixiv_states.items()):
+        if expires <= now:
+            _used_pixiv_states.pop(key, None)
+    if state in _used_pixiv_states:
+        return False
+    _used_pixiv_states[state] = now + PIXIV_STATE_TTL
+    return True
 
 
 def get_or_create_guest(db: Session) -> User:
@@ -248,20 +316,39 @@ class PixivLoginStart(BaseModel):
 
 
 class PixivLoginComplete(BaseModel):
-    state: str = Field(min_length=20, max_length=128)
+    # state は verifier を暗号化して埋め込むため、固定長の乱数より長くなる。
+    state: str = Field(min_length=20, max_length=512)
     callback_url_or_code: str = Field(min_length=1, max_length=4096)
 
 
 def _pixiv_code(value: str) -> str:
-    value = value.strip()
-    if value.startswith("https://"):
+    """コールバックURL・`code=...`・認可コード単体のどれでも受け付ける。"""
+    value = (value or "").strip().strip("\"'<>").strip()
+    if value.lower().startswith("code="):
+        # クエリ部分だけを貼り付けた場合
+        value = parse_qs(value).get("code", [""])[0]
+    elif "code=" in value and "://" not in value:
+        # 開発者ツールからはスキーム無しのURLがコピーされることがある。
+        value = "https://" + value.lstrip("/")
+
+    if value.startswith(("http://", "https://")):
         parsed = urlparse(value)
         expected = urlparse(PIXIV_CALLBACK)
-        if (parsed.scheme, parsed.netloc, parsed.path) != (expected.scheme, expected.netloc, expected.path):
+        if (parsed.hostname or "") != (expected.hostname or "") or parsed.path != expected.path:
             raise HTTPException(status_code=400, detail="PixivのコールバックURLを入力してください。")
-        value = parse_qs(parsed.query).get("code", [""])[0]
-    if not value or len(value) > 2048 or any(c.isspace() for c in value):
-        raise HTTPException(status_code=400, detail="認可コードが無効です。")
+        codes = parse_qs(parsed.query).get("code", [])
+        value = codes[0] if len(codes) == 1 else ""
+
+    if (
+        not value
+        or len(value) > 2048
+        or any(c.isspace() for c in value)
+        or not _PIXIV_CODE_RE.match(value)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="認可コードを読み取れませんでした。callback? のURLを丸ごと貼り付けてください。",
+        )
     return value
 
 
@@ -279,20 +366,17 @@ def start_pixiv_login(payload: PixivLoginStart, user: User = Depends(get_current
     if payload.mode == "link" and user.email == GUEST_EMAIL:
         raise HTTPException(status_code=401, detail="先にRefLensアカウントへログインしてください。")
 
-    now = time.monotonic()
-    for key, (_, expires, _, _) in list(_pixiv_pending.items()):
-        if expires <= now:
-            _pixiv_pending.pop(key, None)
     verifier = secrets.token_urlsafe(32)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-    state = secrets.token_urlsafe(32)
-    _pixiv_pending[state] = (verifier, now + 600, payload.mode, user.id if payload.mode == "link" else None)
+    state = _encode_pixiv_state(
+        verifier, payload.mode, user.id if payload.mode == "link" else None
+    )
     url = "https://app-api.pixiv.net/web/v1/login?" + urlencode({
         "code_challenge": challenge,
         "code_challenge_method": "S256",
         "client": "pixiv-android",
     })
-    return {"state": state, "login_url": url, "expires_in": 600}
+    return {"state": state, "login_url": url, "expires_in": PIXIV_STATE_TTL}
 
 
 @router.post("/pixiv/complete", response_model=Token)
@@ -302,10 +386,12 @@ async def complete_pixiv_login(
     db: Session = Depends(get_db),
 ):
     """Exchange one-time code, then sign in or link to the authenticated account."""
-    pending = _pixiv_pending.pop(payload.state, None)
-    if not pending or pending[1] <= time.monotonic():
+    pending = _decode_pixiv_state(payload.state)
+    if not pending:
         raise HTTPException(status_code=400, detail="ログイン操作の期限が切れました。最初からやり直してください。")
-    verifier, _, mode, linked_user_id = pending
+    if not _mark_pixiv_state_used(payload.state):
+        raise HTTPException(status_code=400, detail="このログイン操作は既に使用済みです。最初からやり直してください。")
+    verifier, mode, linked_user_id = pending
     if mode == "link" and (user.id != linked_user_id or user.email == GUEST_EMAIL):
         raise HTTPException(status_code=403, detail="連携開始時と同じRefLensアカウントで操作してください。")
     code = _pixiv_code(payload.callback_url_or_code)
@@ -313,6 +399,7 @@ async def complete_pixiv_login(
         token_data = await PixivClient.exchange_authorization_code(code, verifier)
         profile = token_data.get("user") or await PixivClient(token_data["access_token"]).get_user_me()
     except PixivApiError as exc:
+        logger.warning("Pixiv code exchange failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     pixiv_id = str(profile.get("id") or "")
     if not pixiv_id:

@@ -34,6 +34,8 @@ import QuickLookModal from '~/components/browser/QuickLookModal.vue'
 import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
 import FolderActionsMenu from '~/components/ui/FolderActionsMenu.vue'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
+import LandingHero from '~/components/landing/LandingHero.vue'
+import WelcomeSidebarCard from '~/components/landing/WelcomeSidebarCard.vue'
 import type { BookmarkItem, FolderItem } from '~/types'
 import { useSearchSuggest } from '~/composables/useSearchSuggest'
 import { useBoardStore } from '~/stores/boardStore'
@@ -49,6 +51,48 @@ const toast = useToast()
 const { resolveMediaUrl } = useMediaUrl()
 const { copyToClipboard, extractImagesFromDataTransfer } = useImageProcessor()
 const { isOpen: isMobileSidebarOpen } = useMobileNav()
+const route = useRoute()
+
+/** 未ログイン時の表示モード管理（false: 初期ビュー・LP, true: デモ体験モード） */
+const isDemoMode = ref(false)
+
+onMounted(() => {
+  if (route.query.demo === '1' || route.query.demo === 'true') {
+    isDemoMode.value = true
+  }
+})
+
+/** 初期ビューを表示するか（未ログインかつデモ体験モードに入っていない時） */
+const showLandingHero = computed(() => {
+  // ログイン済みなら初期ビューは出さず通常画面へ
+  if (auth.isAuthenticated) return false
+  // デモモードに入っていれば通常画面（デモ表示）へ
+  if (isDemoMode.value) return false
+  // 未ログイン時は初期ビュー（LP/ヒーロー）を表示
+  return true
+})
+
+function enterDemoMode() {
+  isDemoMode.value = true
+}
+
+function exitDemoMode() {
+  isDemoMode.value = false
+}
+
+function triggerAuthDialog(mode?: 'login' | 'register') {
+  window.dispatchEvent(new Event('reflens:auth-switch'))
+}
+
+/** ログイン専用アクションのガード関数 */
+function requireAuth(actionLabel = 'この操作'): boolean {
+  if (!auth.isAuthenticated) {
+    toast.info(`${actionLabel}はログイン専用です。新規登録またはログインしてご利用ください。`)
+    triggerAuthDialog('login')
+    return false
+  }
+  return true
+}
 
 /**
  * Manager の 3 構成ナビゲーション:
@@ -640,6 +684,7 @@ function isCustomFolder(folder: FolderItem) {
 
 /** サイドナビの 3 セクション切り替え */
 async function switchSection(section: ManagerSection) {
+  isDemoMode.value = true
   activeSection.value = section
   isMobileSidebarOpen.value = false
   if (section === 'library') {
@@ -654,6 +699,7 @@ async function switchSection(section: ManagerSection) {
 
 /** フォルダを選択してライブラリ（ブックマーク一覧）を開く */
 function selectFolder(folder: FolderItem) {
+  isDemoMode.value = true
   selectedFolder.value = folder.name === 'All References' ? null : folder.name
   selectedSource.value = 'all'
   activeSection.value = 'library'
@@ -819,16 +865,19 @@ function moveFolderByKey(folder: FolderItem, delta: -1 | 1) {
 }
 
 async function handleRenameFolder(folder: FolderItem, name: string) {
+  if (!requireAuth('フォルダ名の変更')) return
   if (!folder.id) return
   await boardStore.renameFolder(folder.id, name)
 }
 
 async function handleUpdateFolderColor(folder: FolderItem, color: string) {
+  if (!requireAuth('フォルダカラーの変更')) return
   if (!folder.id) return
   await boardStore.updateFolderColor(folder.id, color)
 }
 
 async function handleDeleteFolder(folder: FolderItem) {
+  if (!requireAuth('フォルダの削除')) return
   if (!folder.id) return
   await boardStore.deleteFolder(folder.id)
 }
@@ -879,6 +928,7 @@ async function onFolderBookmarkDrop(folder: FolderItem, event: DragEvent) {
 }
 
 async function handleDropUrl() {
+  if (!requireAuth('資料の保存')) return
   const url = inputDropUrl.value.trim()
   if (!url || isDropping.value) return
 
@@ -895,6 +945,7 @@ async function handleDropUrl() {
 }
 
 async function handleUploadFiles(files: File[]) {
+  if (!requireAuth('画像のアップロード')) return
   if (!files.length) return
   const target = stashTargetFolder.value || selectedFolder.value || undefined
   await boardStore.uploadImages(files, 150, 150, target)
@@ -952,6 +1003,7 @@ async function handlePlaceOnBoard(item: BookmarkItem) {
 }
 
 async function handleCreateFolder() {
+  if (!requireAuth('フォルダの新規作成')) return
   if (!newFolderName.value.trim()) return
   const name = newFolderName.value.trim()
   const color = newFolderColor.value || '#6366f1'
@@ -962,11 +1014,13 @@ async function handleCreateFolder() {
 }
 
 async function handleMoveBookmark(item: BookmarkItem, folderName: string) {
+  if (!requireAuth('資料の移動')) return
   const moved = await boardStore.moveBookmarkFolder(item.id, folderName)
   if (moved) toast.success('フォルダを変更しました', folderName)
 }
 
 async function handleDeleteBookmark(item: BookmarkItem) {
+  if (!requireAuth('資料の削除')) return
   const deleted = await boardStore.deleteBookmark(item.id)
   if (deleted) toast.success('ライブラリから削除しました', item.title)
 }
@@ -1006,6 +1060,12 @@ onBeforeUnmount(() => {
           : 'hidden md:flex md:w-64 md:h-full md:border-r md:border-canvas-border md:bg-canvas-panel md:p-3 md:overflow-hidden'"
       >
         <div class="shrink-0 space-y-3">
+          <!-- 未ログイン時のウェルカムカード (floppy.io風) -->
+          <WelcomeSidebarCard
+            v-if="!auth.isAuthenticated"
+            @open-auth="triggerAuthDialog"
+          />
+
           <!-- モバイル時: ページ間ナビゲーション + サイト情報モーダル起動 -->
           <div class="md:hidden pb-3 border-b border-canvas-border">
             <MobileNavLinks :show-site-links="true" />
@@ -1252,8 +1312,49 @@ onBeforeUnmount(() => {
         tabindex="-1"
         class="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 md:px-6 pt-2.5 sm:pt-4 pb-safe-main space-y-4 focus:outline-none"
       >
-        <!-- モバイル用 3 構成クイック切替タブ（ハンバーガーを開かなくても1タップでホーム/検索/ライブラリを移動可能） -->
-        <div class="md:hidden grid grid-cols-3 gap-1 p-1 rounded-xl bg-canvas-panel border border-canvas-border">
+        <!-- A. 未ログイン初期ビュー (Landing Hero / floppy.io風) -->
+        <template v-if="showLandingHero">
+          <LandingHero
+            @explore-demo="enterDemoMode"
+            @open-auth="triggerAuthDialog"
+          />
+        </template>
+
+        <!-- B. ログイン済み または 未ログインデモ体験モード -->
+        <template v-else>
+          <!-- デモ体験モード案内バナー (未ログイン時のみ) -->
+          <div
+            v-if="!auth.isAuthenticated"
+            class="p-3 sm:p-3.5 rounded-2xl bg-brand/10 border border-brand/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-ink shadow-2xs animate-fade-in"
+          >
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="px-2 py-0.5 rounded-md bg-brand text-brand-fg text-[10px] font-mono font-bold tracking-wider shrink-0">
+                DEMO MODE
+              </span>
+              <p class="text-xs text-ink truncate">
+                現在は<strong>デモ表示モード</strong>です。自分専用のフォルダ作成や資料保存はログイン専用です。
+              </p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              <button
+                type="button"
+                class="px-3 py-1.5 rounded-xl bg-brand text-brand-fg text-[11px] font-bold hover:bg-brand-hover transition-colors shadow-2xs cursor-pointer"
+                @click="triggerAuthDialog('register')"
+              >
+                新規登録 / ログイン
+              </button>
+              <button
+                type="button"
+                class="px-2.5 py-1.5 rounded-xl border border-canvas-border-strong bg-canvas-card text-ink-muted hover:text-ink text-[11px] font-semibold transition-colors cursor-pointer"
+                @click="exitDemoMode"
+              >
+                初期ビューへ
+              </button>
+            </div>
+          </div>
+
+          <!-- モバイル用 3 構成クイック切替タブ（ハンバーガーを開かなくても1タップでホーム/検索/ライブラリを移動可能） -->
+          <div class="md:hidden grid grid-cols-3 gap-1 p-1 rounded-xl bg-canvas-panel border border-canvas-border">
           <button
             type="button"
             class="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-colors"
@@ -2629,6 +2730,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
+        </template>
       </main>
     </div>
 

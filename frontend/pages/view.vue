@@ -35,6 +35,7 @@ import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
 import type { BookmarkItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
+import { useAuthStore } from '~/stores/authStore'
 import { usePixiv, type PixivArtwork } from '~/composables/usePixiv'
 import { useBackendUrl } from '~/composables/useBackendUrl'
 import { useMediaUrl } from '~/composables/useMediaUrl'
@@ -43,8 +44,18 @@ import { useMobileNav } from '~/composables/useMobileNav'
 import { useSearchSuggest } from '~/composables/useSearchSuggest'
 
 const boardStore = useBoardStore()
+const auth = useAuthStore()
 const pixiv = usePixiv()
 const toast = useToast()
+
+function requireAuth(actionLabel = 'この操作'): boolean {
+  if (!auth.isAuthenticated) {
+    toast.info(`${actionLabel}はログイン専用です。新規登録またはログインしてご利用ください。`)
+    window.dispatchEvent(new Event('reflens:auth-switch'))
+    return false
+  }
+  return true
+}
 const { apiBase } = useBackendUrl()
 const { resolveMediaUrl } = useMediaUrl()
 const { isOpen: isSidebarOpen } = useMobileNav()
@@ -309,6 +320,7 @@ async function handleStashDetail() {
 }
 
 async function handleStash(artwork?: PixivArtwork) {
+  if (!requireAuth('作品の保存')) return
   const ids = artwork ? [artwork.id] : [...pixiv.selectedIds.value]
   if (!ids.length) return
 
@@ -331,11 +343,13 @@ async function handleStash(artwork?: PixivArtwork) {
 }
 
 async function handleMoveBookmark(item: BookmarkItem, folderName: string) {
+  if (!requireAuth('ブックマークの移動')) return
   const moved = await boardStore.moveBookmarkFolder(item.id, folderName)
   if (moved) toast.success(`「${item.title}」を ${formatFolderLabel(folderName)} へ移動しました`)
 }
 
 async function handleDeleteBookmark(item: BookmarkItem) {
+  if (!requireAuth('ブックマークの削除')) return
   const deleted = await boardStore.deleteBookmark(item.id)
   if (deleted) toast.success('ブックマークを削除しました')
 }

@@ -22,10 +22,14 @@ import CanvasSaveModal from '~/components/panel/CanvasSaveModal.vue'
 import CanvasControls from '~/components/ui/CanvasControls.vue'
 import AssetFileBrowser from '~/components/browser/AssetFileBrowser.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
+import { useAuthStore } from '~/stores/authStore'
+import { useToast } from '~/composables/useToast'
 
 const route = useRoute()
 const boardStore = useBoardStore()
 const mobileNav = useMobileNav()
+const auth = useAuthStore()
+const toast = useToast()
 
 const boardId = computed(() => route.params.id as string)
 
@@ -36,6 +40,20 @@ const isPixivModalOpen = ref(false)
 const isInstagramModalOpen = ref(false)
 const isSaveModalOpen = ref(false)
 const editableTitle = ref('')
+
+function requireAuth(actionLabel = 'この操作'): boolean {
+  if (!auth.isAuthenticated) {
+    toast.info(`${actionLabel}はログイン専用です。新規登録またはログインしてご利用ください。`)
+    window.dispatchEvent(new Event('reflens:auth-switch'))
+    return false
+  }
+  return true
+}
+
+function handleOpenSaveModal() {
+  if (!requireAuth('キャンバスの一括フォルダ保存')) return
+  isSaveModalOpen.value = true
+}
 
 async function init() {
   await Promise.all([
@@ -158,13 +176,21 @@ onMounted(init)
             <span class="hidden sm:inline">解除</span>
           </button>
 
+          <!-- デモ表示バッジ (未ログイン時) -->
+          <div
+            v-if="!auth.isAuthenticated"
+            class="pointer-events-auto floating-bar px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 text-[11px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0 shadow-sm"
+          >
+            <span>DEMO MODE</span>
+          </div>
+
           <!-- 一括フォルダセーブボタン（キャンバス離脱前のワンクリック保存） -->
           <button
             v-if="boardStore.items.length > 0"
             type="button"
             class="pointer-events-auto floating-bar px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-bold text-ink hover:text-brand transition-colors shrink-0 shadow-sm whitespace-nowrap"
             title="キャンバス上の資料を一括でフォルダに保存"
-            @click="isSaveModalOpen = true"
+            @click="handleOpenSaveModal"
           >
             <Folder class="w-3.5 h-3.5 text-brand shrink-0" />
             <span class="hidden sm:inline">一括保存</span>

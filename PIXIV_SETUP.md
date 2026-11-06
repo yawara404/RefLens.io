@@ -52,7 +52,7 @@ backend/venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet
 
 現在の設定はPixivモバイルApp APIのクライアントを利用しています。このクライアントのコールバック先はPixiv側のURLに固定され、RefLensのWebページへ直接戻すことはできません。RefLensだけで完結する通常の「Pixivでログイン」ボタンではなく、下記のURL手動入力を含む方式です。RefLensに自動で戻る方式を作るには、RefLens用に登録されたOAuthクライアントと許可済みのリダイレクトURIが別途必要です。PixivのパスワードやCookieをRefLensが代理取得する方式にはしません。
 
-ローカル専用画面 `http://127.0.0.1:3002/view` で「Pixivに接続」→「Pixivでログイン」を押します。Pixiv側のログイン画面が別タブで開きます。ログイン後の `app-api.pixiv.net/.../callback?code=...` のURLをコピーしてRefLensに貼り、「RefLensに接続」を押してください。認可コードは短時間で失効し、一度しか使えません。失敗時は「最初からやり直す」で再取得します。
+ローカル専用画面 `http://127.0.0.1:3002/view` で「Pixivに接続」→「Pixivでログイン」を押します。Pixiv側のログイン画面が別タブで開きます。ログイン後の `app-api.pixiv.net/.../callback?code=...` のURLをコピーしてRefLensに貼り、「RefLensに接続」を押してください。認可コードは1回限りで、有効期限は**ごく短時間（数十秒程度）**です。ログインしたら間を空けずに貼り付けてください。失敗時は「最初からやり直す」で再取得します。貼り付けるURLは、`https://` を省いた形や `code=...` だけでも受け付けます。ログイン操作（PKCEのstate）はサーバーに暗号化して持たせるため、途中でバックエンドが再起動しても続行できます。
 
 RefLensへ未ログインなら、Pixiv IDに紐づく専用のRefLensアカウントを作成・ログインします。既存RefLensアカウントへログイン中なら、そのアカウントにPixivを連携します。RefLensの通常ログイン画面にも「Pixiv」タブがあります。同じPixivアカウントを別のRefLensアカウントに重複連携することはできません。
 

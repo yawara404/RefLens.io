@@ -70,17 +70,22 @@ onUnmounted(() => {
       <span class="hidden md:inline w-14 h-3 rounded bg-canvas-hover" />
     </div>
 
-    <!-- 未ログイン: ログインボタン -->
-    <button
-      v-else-if="!auth.isAuthenticated"
-      type="button"
-      class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-brand text-brand-fg hover:bg-brand-hover transition-colors"
-      title="ログイン / アカウント作成"
-      @click="isDialogOpen = true"
-    >
-      <LogIn class="w-3.5 h-3.5" />
-      <span class="hidden md:inline">ログイン</span>
-    </button>
+    <!-- 未ログイン: デモバッジ + ログインボタン -->
+    <div v-else-if="!auth.isAuthenticated" class="flex items-center gap-1.5">
+      <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+        DEMO
+      </span>
+      <button
+        type="button"
+        class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-brand text-brand-fg hover:bg-brand-hover transition-colors shadow-2xs cursor-pointer"
+        title="ログイン / アカウント作成"
+        @click="isDialogOpen = true"
+      >
+        <LogIn class="w-3.5 h-3.5" />
+        <span class="hidden md:inline">ログイン / 登録</span>
+        <span class="md:hidden">ログイン</span>
+      </button>
+    </div>
 
     <!-- ログイン済み: アバター + アカウントポップアップモーダル -->
     <template v-else>

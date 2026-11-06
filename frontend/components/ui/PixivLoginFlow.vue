@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { Info, Lock, ChevronDown } from 'lucide-vue-next'
 import { useAuthStore } from '~/stores/authStore'
 import { useBackendUrl } from '~/composables/useBackendUrl'
@@ -18,6 +18,49 @@ const callbackInput = ref<HTMLInputElement | null>(null)
 const showGuide = ref(false)
 const guideBody = ref<HTMLElement | null>(null)
 
+/**
+ * 進行中のログイン（state とログインURL）をタブ内に保持する。
+ * モーダルを閉じたり再読み込みしても貼り付け欄が消えないようにするため。
+ */
+const STORAGE_KEY = 'reflens-pixiv-login'
+
+function savePending() {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ mode: props.mode, state: state.value, login_url: loginUrl.value }),
+    )
+  } catch {
+    /* sessionStorage 無効時はメモリ上だけ保持 */
+  }
+}
+
+function clearPending() {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.removeItem(STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+function restorePending() {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw) as { mode?: string; state?: string; login_url?: string }
+    if (saved?.mode !== props.mode || typeof saved.state !== 'string' || !saved.state) return
+    state.value = saved.state
+    loginUrl.value = typeof saved.login_url === 'string' ? saved.login_url : ''
+  } catch {
+    /* 壊れた値は無視してやり直してもらう */
+  }
+}
+
+onMounted(restorePending)
+
 /** 展開した直後、モーダル内スクロールでガイド本文が見える位置まで送る */
 function toggleGuide() {
   showGuide.value = !showGuide.value
@@ -34,6 +77,8 @@ async function start() {
     })
     state.value = result.state
     loginUrl.value = result.login_url
+    callback.value = ''
+    savePending()
     window.open(result.login_url, '_blank', 'noopener,noreferrer')
   } catch (e: any) {
     error.value = e?.data?.detail || 'Pixivログインを開始できませんでした。'
@@ -43,7 +88,13 @@ async function start() {
 }
 
 async function complete() {
-  if (!state.value || !callback.value.trim() || busy.value) return
+  if (busy.value) return
+  const pasted = callback.value.trim()
+  if (!state.value) {
+    error.value = '先に「Pixivでログイン」を押してログインを開始してください。'
+    return
+  }
+  if (!pasted) return
   busy.value = true
   error.value = ''
   try {
@@ -51,14 +102,19 @@ async function complete() {
       access_token: string; token_type: string; user_id: string; username: string
     }>(`${apiBase.value}/auth/pixiv/complete`, {
       method: 'POST',
-      body: { state: state.value, callback_url_or_code: callback.value.trim() },
+      body: { state: state.value, callback_url_or_code: pasted },
     })
     callback.value = ''
     state.value = ''
+    loginUrl.value = ''
+    clearPending()
     await auth.adopt(result)
     emit('completed')
   } catch (e: any) {
-    state.value = '' // One-time PKCE state is consumed even if code exchange fails.
+    // 認可コードは1回限り。どのみち新しいログインが必要なので state は破棄する。
+    state.value = ''
+    loginUrl.value = ''
+    clearPending()
     error.value = e?.data?.detail || 'Pixiv認証を完了できませんでした。最初からやり直してください。'
   } finally {
     busy.value = false
@@ -68,7 +124,11 @@ async function complete() {
 /** 貼り付けた瞬間に自動で接続を試みる（開発者ツールからコピー → 貼るだけで完了） */
 async function onPaste() {
   await nextTick()
-  if (state.value && callback.value.trim()) void complete()
+  if (!state.value) {
+    error.value = '先に「Pixivでログイン」を押してログインを開始してください。'
+    return
+  }
+  if (callback.value.trim()) void complete()
 }
 </script>
 
@@ -81,7 +141,7 @@ async function onPaste() {
     <ol class="space-y-1.5 text-ink-muted leading-relaxed">
       <li><span class="text-ink font-semibold">1.</span> 下のガイドを開き、開発者ツールの Network を用意する</li>
       <li><span class="text-ink font-semibold">2.</span> 「Pixivでログイン」でログインする</li>
-      <li><span class="text-ink font-semibold">3.</span> <code class="font-mono">callback?</code> の Request URL をコピーして下に貼る（貼り付けだけで自動接続）</li>
+      <li><span class="text-ink font-semibold">3.</span> <code class="font-mono">callback?</code> の Request URL をコピーして<b class="text-ink">すぐに</b>下へ貼る（貼り付けだけで自動接続）</li>
     </ol>
 
     <!-- コールバックURLのガイド（モーダル内スクロール前提でコンパクトに保つ） -->
@@ -125,7 +185,8 @@ async function onPaste() {
         </ol>
 
         <p class="text-ink-subtle">
-          認可コードは1回限り・600秒で失効します。切れたら「最初からやり直す」で取り直してください。Pixivのパスワードは入力しません。
+          認可コードは1回限りで、有効期限は<strong class="text-ink">ごく短時間（数十秒程度）</strong>です。
+          ログインしたら間を空けずに貼り付けてください。切れたら「最初からやり直す」で取り直します。Pixivのパスワードは入力しません。
         </p>
       </div>
     </div>
@@ -142,7 +203,7 @@ async function onPaste() {
       <label class="block text-ink-muted" for="pixiv-callback">PixivのコールバックURLまたは認可コード</label>
       <input id="pixiv-callback" ref="callbackInput" v-model="callback" type="password" autocomplete="off" spellcheck="false"
         class="w-full rounded-lg border border-canvas-border bg-canvas-card px-3 py-2 text-ink" placeholder="callback?code=... を貼り付け"
-        @paste="onPaste">
+        @paste="onPaste" @keydown.enter.prevent="complete">
       <button type="button" class="w-full py-2 rounded-lg bg-brand text-brand-fg font-semibold disabled:opacity-50"
         :disabled="busy || !callback.trim()" @click="complete">{{ busy ? '確認中…' : 'RefLensに接続' }}</button>
     </template>

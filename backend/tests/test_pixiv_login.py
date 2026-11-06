@@ -12,9 +12,10 @@ from app.core.database import Base
 from app.models.models import PixivAccount, User
 from app.routers.auth import (
     GUEST_EMAIL, PixivLoginComplete, PixivLoginStart,
-    _pixiv_code, complete_pixiv_login, start_pixiv_login,
+    _decode_pixiv_state, _encode_pixiv_state, _pixiv_code,
+    complete_pixiv_login, start_pixiv_login,
 )
-from app.services.pixiv_client import PixivClient
+from app.services.pixiv_client import PixivClient, _describe_token_error
 
 
 class PixivLoginTests(unittest.IsolatedAsyncioTestCase):
@@ -43,6 +44,33 @@ class PixivLoginTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException):
             _pixiv_code("https://example.com/callback?code=stolen")
         self.assertEqual(_pixiv_code("https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=valid"), "valid")
+
+    def test_callback_url_variants_are_accepted(self):
+        """URL丸ごと・スキーム無し・引用符付き・code 単体のどれでも受け付けること。"""
+        code = "DESQAGDLiV0NXlNJtgCSEt72mwC4zD1St0FpEvoU68Y"
+        self.assertEqual(_pixiv_code(code), code)
+        self.assertEqual(_pixiv_code(f"code={code}"), code)
+        self.assertEqual(
+            _pixiv_code(
+                f"https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback"
+                f"?state=8w2n8B5g29N0KoA3wn6jXtqRUfjUdNnsYbGT4TOphFhcCm8cu94iFlGm4F2BUHxC&code={code}"
+            ),
+            code,
+        )
+        self.assertEqual(
+            _pixiv_code(f"  \"app-api.pixiv.net/web/v1/users/auth/pixiv/callback?state=x&code={code}\"  "),
+            code,
+        )
+
+    def test_pkce_state_can_be_decoded_after_restart(self):
+        """state に verifier を暗号化して持つため、プロセスの再起動をまたいでも復号できる。"""
+        verifier = "v" * 43
+        state = _encode_pixiv_state(verifier, "link", "user-1")
+        self.assertEqual(_decode_pixiv_state(state), (verifier, "link", "user-1"))
+        self.assertGreater(len(state), 128)
+        # 改ざんされた state は受け付けない
+        self.assertIsNone(_decode_pixiv_state(state[:-4] + "AAAA"))
+        self.assertIsNone(_decode_pixiv_state("not-a-valid-state"))
 
     async def test_pixiv_login_creates_private_reflens_account(self):
         started = start_pixiv_login(PixivLoginStart(mode="login"), self.guest)
@@ -179,6 +207,29 @@ class PublicPreviewPixivTests(unittest.IsolatedAsyncioTestCase):
         me = get_me(self.member)
         self.assertTrue(me["pixiv_connected"])
         self.assertEqual(me["pixiv_username"], "Artist")
+
+
+class PixivTokenErrorTests(unittest.TestCase):
+    """失敗理由を「設定ミス」ではなく実際の原因として伝えること。"""
+
+    def test_expired_or_used_code_is_explained(self):
+        message = _describe_token_error(400, {"error": "invalid_grant"})
+        self.assertIn("認可コード", message)
+        self.assertIn("やり直", message)
+        self.assertNotIn("サーバー設定", message)
+
+    def test_invalid_client_points_to_settings(self):
+        message = _describe_token_error(
+            400,
+            {
+                "error": "invalid_request",
+                "errors": {"system": {"code": 918, "message": "不正なOAuthクライアントです"}},
+            },
+        )
+        self.assertIn("Client ID", message)
+
+    def test_rate_limit_is_explained(self):
+        self.assertIn("多すぎます", _describe_token_error(429, {}))
 
 
 if __name__ == "__main__":

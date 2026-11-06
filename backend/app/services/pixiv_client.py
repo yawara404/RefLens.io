@@ -90,6 +90,33 @@ class PixivApiError(RuntimeError):
         self.pixiv_error = pixiv_error
 
 
+def _describe_token_error(status_code: int, data: Dict[str, Any]) -> str:
+    """Pixiv のトークン取得エラーを、利用者が次の行動を取れる日本語にする。
+
+    以前はすべて「Refresh Tokenとサーバー設定を確認してください」に潰していたため、
+    実際には「認可コードの期限切れ」でも設定ミスに見えていた。
+    """
+    errors = data.get("errors") if isinstance(data.get("errors"), dict) else {}
+    system = errors.get("system") if isinstance(errors.get("system"), dict) else {}
+    code = system.get("code")
+    message = str(system.get("message") or "")
+    error = str(data.get("error") or "")
+
+    if error == "invalid_client" or code == 1508 or "OAuthクライアント" in message:
+        return (
+            "Pixiv接続のサーバー設定（Client ID / Client Secret）が無効です。"
+            "backend/.env の設定を確認してください。"
+        )
+    if status_code == 429:
+        return "Pixivへの認証要求が多すぎます。しばらく待ってからやり直してください。"
+    if status_code >= 500:
+        return "Pixiv側でエラーが発生しました。時間をおいてやり直してください。"
+    return (
+        "認可コードが無効か、有効期限が切れています。認可コードは1回限りで寿命が非常に短いため、"
+        "「最初からやり直す」でログインを開始し直し、ログイン後すぐにコールバックURLを貼り付けてください。"
+    )
+
+
 class PixivClient:
     """1つのpixivアクセストークンに対するAPIクライアント"""
 
@@ -114,10 +141,26 @@ class PixivClient:
             )
 
         if resp.status_code != 200:
-            logger.warning("Pixiv token request failed: HTTP %s", resp.status_code)
+            try:
+                error_data = resp.json()
+            except ValueError:
+                error_data = {}
+            if not isinstance(error_data, dict):
+                error_data = {}
+            elif isinstance(error_data.get("response"), dict):
+                error_data = error_data["response"]
+            errors = error_data.get("errors")
+            system = errors.get("system") if isinstance(errors, dict) else None
+            logger.warning(
+                "Pixiv token request failed: HTTP %s error=%s code=%s",
+                resp.status_code,
+                error_data.get("error"),
+                system.get("code") if isinstance(system, dict) else None,
+            )
             raise PixivApiError(
-                "Pixivの認証に失敗しました。Refresh Tokenとサーバー設定を確認してください。",
+                _describe_token_error(resp.status_code, error_data),
                 status_code=resp.status_code,
+                pixiv_error=str(error_data.get("error") or "") or None,
             )
 
         data = resp.json()

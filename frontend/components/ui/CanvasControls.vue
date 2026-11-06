@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
+import { useAuthStore } from '~/stores/authStore'
 import { useToast } from '~/composables/useToast'
 
 defineProps<{ boardId: string }>()
@@ -34,7 +35,17 @@ const emit = defineEmits<{
 }>()
 
 const boardStore = useBoardStore()
+const auth = useAuthStore()
 const toast = useToast()
+
+function requireAuth(actionLabel = 'この操作'): boolean {
+  if (!auth.isAuthenticated) {
+    toast.info(`${actionLabel}はログイン専用です。新規登録またはログインしてご利用ください。`)
+    window.dispatchEvent(new Event('reflens:auth-switch'))
+    return false
+  }
+  return true
+}
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const openMenu = ref(false)
 const isAddModalOpen = ref(false)
@@ -68,6 +79,10 @@ const THEME_OPTIONS = [
 ] as const
 
 async function handleFileChange(e: Event) {
+  if (!requireAuth('画像のアップロード')) {
+    if (fileInputRef.value) fileInputRef.value.value = ''
+    return
+  }
   const target = e.target as HTMLInputElement
   if (target.files?.length) {
     isAddModalOpen.value = false
@@ -78,6 +93,7 @@ async function handleFileChange(e: Event) {
 }
 
 async function handleDirectUrlAdd() {
+  if (!requireAuth('URLからの画像追加')) return
   const url = directUrl.value.trim()
   if (!url) return
   const coords = boardStore.getNextPlacementCoords()
