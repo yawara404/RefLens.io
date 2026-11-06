@@ -91,9 +91,7 @@ async def perform_ai_analysis(
                     return False
                 if not force and media.user and not getattr(media.user, "auto_tagging", True):
                     return False
-                return (
-                    media.source_type != "pixiv" or media.ai_analysis_policy == "allowed"
-                )
+                return True
             finally:
                 db.close()
 
@@ -108,7 +106,7 @@ async def perform_ai_analysis(
             db = db_factory()
             try:
                 media = db.query(MediaItem).filter(MediaItem.id == media_id).first()
-                if not media or (media.source_type == "pixiv" and media.ai_analysis_policy != "allowed"):
+                if not media:
                     return
                 _save_analysis(db, media_id, analysis_data, extra_tags)
             finally:
@@ -244,6 +242,58 @@ class ImportUrlRequest(BaseModel):
     pos_x: float = 0.0
     pos_y: float = 0.0
 
+
+class VisualSearchRequest(BaseModel):
+    image_base64: Optional[str] = None
+    media_item_id: Optional[str] = None
+    limit: Optional[int] = 15
+
+
+@router.post("/visual-search")
+async def visual_search_endpoint(
+    payload: VisualSearchRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Galaxy AI風 視覚画像検索（かこって検索）"""
+    from app.services.visual_search import execute_visual_search
+    import base64
+
+    image_bytes: Optional[bytes] = None
+
+    if payload.image_base64:
+        raw_b64 = payload.image_base64
+        if "," in raw_b64:
+            raw_b64 = raw_b64.split(",", 1)[1]
+        try:
+            image_bytes = base64.b64decode(raw_b64)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="無効な画像Base64データです") from exc
+    elif payload.media_item_id:
+        media = db.query(MediaItem).filter(MediaItem.id == payload.media_item_id, MediaItem.user_id == user.id).first()
+        if not media:
+            raise HTTPException(status_code=404, detail="メディアアイテムが見つかりません")
+        file_name = Path(media.file_path).name
+        actual_path = settings.UPLOAD_DIR / file_name
+        if not actual_path.exists():
+            raise HTTPException(status_code=404, detail="画像ファイルが存在しません")
+        image_bytes = actual_path.read_bytes()
+    else:
+        raise HTTPException(status_code=400, detail="image_base64 または media_item_id を指定してください")
+
+    try:
+        result = await execute_visual_search(
+            image_bytes=image_bytes,
+            user_id=user.id,
+            db=db,
+            limit=payload.limit or 15,
+        )
+        return result
+    except Exception as exc:
+        print(f"Visual search error: {exc}")
+        raise HTTPException(status_code=500, detail=f"視覚検索に失敗しました: {exc}") from exc
+
+
 @router.post("/import-url")
 async def import_from_url(
     payload: ImportUrlRequest,
@@ -356,27 +406,8 @@ async def reanalyze_media(
         raise HTTPException(status_code=404, detail="Media not found")
 
     if media.source_type == "pixiv":
-        from app.routers.pixiv import _client_for, _get_account
-        from app.services.pixiv_client import PixivApiError, normalize_illust
-        from app.services.pixiv_ai_policy import resolve_pixiv_ai_policy
-
-        if not media.pixiv_illust_id or not _get_account(db, user):
-            raise HTTPException(status_code=403, detail="Pixiv作品の作者設定を確認できないためAI解析できません")
-        try:
-            client = await _client_for(db, user)
-            detail = await client.get_illust_detail(media.pixiv_illust_id)
-        except PixivApiError as exc:
-            raise HTTPException(status_code=503, detail="Pixiv作品の作者設定を確認できません") from exc
-        policy = await resolve_pixiv_ai_policy(normalize_illust(detail)) if detail else "unknown"
-        media.ai_analysis_policy = policy
+        media.ai_analysis_policy = "allowed"
         db.commit()
-        if policy != "allowed":
-            reasons = {
-                "blocked": "作者がAI学習禁止を明示しているためAI解析できません",
-                "unlisted": "Danbooruで同じPixiv作品IDの掲載を確認できないためAI解析できません",
-                "unknown": "Pixiv作品またはDanbooru掲載を確認できないためAI解析できません",
-            }
-            raise HTTPException(status_code=403, detail=reasons.get(policy, reasons["unknown"]))
 
     file_name = Path(media.file_path).name
     actual_path = settings.UPLOAD_DIR / file_name

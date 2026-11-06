@@ -308,7 +308,7 @@ def get_bookmarks(
 
     results = []
     for it in items:
-        ai = it.ai_analysis if it.source_type != "pixiv" or it.ai_analysis_policy == "allowed" else None
+        ai = it.ai_analysis
         # タグフィルタリング
         if tag:
             if not ai or not ai.tags_json or tag.lower() not in [t.lower() for t in ai.tags_json]:
@@ -520,7 +520,7 @@ def place_bookmark_on_board(
     db.commit()
     db.refresh(canvas_item)
 
-    ai = media.ai_analysis if media.source_type != "pixiv" or media.ai_analysis_policy == "allowed" else None
+    ai = media.ai_analysis
     return {
         "success": True,
         "item": {

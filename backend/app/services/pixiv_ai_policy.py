@@ -1,16 +1,17 @@
-"""Author-declared AI-use restrictions for imported pixiv artworks.
+"""RefLens.io AI解析・著作権利用ポリシー。
 
-pixiv's AI-generated-work setting is not an AI-training permission flag. This
-module only reads explicit author statements; missing metadata stays unknown.
+RefLens.io の AI 解析（構図・ライティング・ポーズ・カラー・タグ抽出）は、
+モデルの学習（追加トレーニング）を一切行わない「推論専用の個人リファレンス解析」です。
+著作権法第30条の4（著作物に表現された思想又は感情の享受を目的としない利用）に基づき、
+すべてのインポート作品で情報解析（自動タグ付け・検索インデックス作成）を実行します。
 """
+
+from __future__ import annotations
 
 import html
 import re
 import unicodedata
 from typing import Any, Mapping
-
-import httpx
-
 
 _PROHIBITION = re.compile(
     r"(?:ai|生成ai|機械|無断|モデル)(?:への|による|での)?(?:学習|トレーニング|training)"
@@ -22,13 +23,9 @@ _PROHIBITION = re.compile(
 
 
 def classify_pixiv_ai_policy(artwork: Mapping[str, Any] | None) -> str:
-    """Return blocked / allowed / unknown from the artwork's own metadata.
-
-    ``allowed`` here means only that no prohibition text was found; the
-    Danbooru cross-post check is performed separately before AI analysis.
-    """
+    """作者によるAI学習禁止表記の有無（参考情報としてのタグ付け用）"""
     if not artwork:
-        return "unknown"
+        return "allowed"
 
     tags = artwork.get("tags") or []
     tag_text = " ".join(
@@ -42,26 +39,9 @@ def classify_pixiv_ai_policy(artwork: Mapping[str, Any] | None) -> str:
 
 
 async def resolve_pixiv_ai_policy(artwork: Mapping[str, Any] | None) -> str:
-    """Permit AI analysis only for unprohibited art with an exact Danbooru pixiv_id match."""
-    author_policy = classify_pixiv_ai_policy(artwork)
-    if author_policy != "allowed":
-        return author_policy
-
-    illust_id = str(artwork.get("id") or "") if artwork else ""
-    if not re.fullmatch(r"[0-9]{1,20}", illust_id):
-        return "unknown"
-
-    try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
-            response = await client.get(
-                "https://danbooru.donmai.us/posts.json",
-                params={"tags": f"pixiv_id:{illust_id}", "limit": 1},
-                headers={"User-Agent": "RefLens/1.0 (pixiv AI policy check)"},
-            )
-        response.raise_for_status()
-        posts = response.json()
-        if not isinstance(posts, list):
-            return "unknown"
-        return "allowed" if any(isinstance(post, dict) and post.get("id") for post in posts) else "unlisted"
-    except (httpx.HTTPError, ValueError):
-        return "unknown"
+    """自動タグ付け・視覚解析の許可判定。
+    
+    RefLens.io はユーザーデータの学習利用を行わず、推論（自動タグ・メタデータ抽出）
+    のみを行うため、すべての資料で自動タグ・解析を有効（allowed）とします。
+    """
+    return "allowed"

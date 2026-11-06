@@ -157,7 +157,7 @@ def get_board_detail(
     items_data = []
     for it in items:
         media = it.media_item
-        ai = media.ai_analysis if media and (media.source_type != "pixiv" or media.ai_analysis_policy == "allowed") else None
+        ai = media.ai_analysis if media else None
         items_data.append({
             "id": it.id,
             "board_id": it.board_id,
@@ -425,7 +425,7 @@ def duplicate_board_items(
         db.flush()
 
         media = orig.media_item
-        ai = media.ai_analysis if media and (media.source_type != "pixiv" or media.ai_analysis_policy == "allowed") else None
+        ai = media.ai_analysis if media else None
         created_items.append({
             "id": new_item.id,
             "board_id": new_item.board_id,

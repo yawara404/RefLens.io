@@ -30,6 +30,7 @@ import {
 import AppHeader from '~/components/ui/AppHeader.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
+import VisualSearchDrawer from '~/components/visual-search/VisualSearchDrawer.vue'
 import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
 import FolderActionsMenu from '~/components/ui/FolderActionsMenu.vue'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
@@ -2468,5 +2469,6 @@ onMounted(async () => {
     </div>
 
     <QuickLookModal />
+    <VisualSearchDrawer />
   </div>
 </template>

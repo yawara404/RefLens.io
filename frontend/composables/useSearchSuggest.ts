@@ -112,3 +112,4 @@ export function useSearchSuggest() {
     clearSuggestions,
   }
 }
+
