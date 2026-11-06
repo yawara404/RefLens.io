@@ -12,7 +12,6 @@ import {
 import type { CanvasItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
 import { useMobileNav } from '~/composables/useMobileNav'
-import { useVisualSearch } from '~/composables/useVisualSearch'
 import AppHeader from '~/components/ui/AppHeader.vue'
 import InfiniteCanvas from '~/components/canvas/InfiniteCanvas.vue'
 import AIInsightDrawer from '~/components/panel/AIInsightDrawer.vue'
@@ -23,13 +22,10 @@ import CanvasSaveModal from '~/components/panel/CanvasSaveModal.vue'
 import CanvasControls from '~/components/ui/CanvasControls.vue'
 import AssetFileBrowser from '~/components/browser/AssetFileBrowser.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
-import CircleSearchOverlay from '~/components/visual-search/CircleSearchOverlay.vue'
-import VisualSearchDrawer from '~/components/visual-search/VisualSearchDrawer.vue'
 
 const route = useRoute()
 const boardStore = useBoardStore()
 const mobileNav = useMobileNav()
-const { startCircleSearch } = useVisualSearch()
 
 const boardId = computed(() => route.params.id as string)
 
@@ -173,18 +169,6 @@ onMounted(init)
             <Folder class="w-3.5 h-3.5 text-brand shrink-0" />
             <span class="hidden sm:inline">一括保存</span>
           </button>
-
-          <!-- Galaxy AI かこって検索ボタン -->
-          <button
-            type="button"
-            class="pointer-events-auto floating-bar px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-bold text-ink hover:text-brand transition-all shrink-0 shadow-sm whitespace-nowrap border-brand/40 bg-canvas-bg/90 hover:bg-canvas-card"
-            title="調べたい被写体・衣装・ポーズを囲んで類似資料をAI検索"
-            @click="startCircleSearch"
-          >
-            <Sparkles class="w-3.5 h-3.5 text-brand animate-pulse" />
-            <span class="hidden sm:inline">かこって検索</span>
-            <span class="sm:hidden">AI検索</span>
-          </button>
         </div>
 
         <!-- 下部メインドック（w-max を指定してボタン文字の縦折り返しを完全防止） -->
@@ -291,10 +275,6 @@ onMounted(init)
       />
 
       <QuickLookModal />
-
-      <!-- Galaxy AI かこって検索オーバーレイ & ドロワー -->
-      <CircleSearchOverlay />
-      <VisualSearchDrawer />
     </main>
   </div>
 </template>

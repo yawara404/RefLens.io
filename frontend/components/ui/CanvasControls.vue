@@ -21,7 +21,6 @@ import {
 } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
 import { useToast } from '~/composables/useToast'
-import { useVisualSearch } from '~/composables/useVisualSearch'
 
 defineProps<{ boardId: string }>()
 
@@ -36,7 +35,6 @@ const emit = defineEmits<{
 
 const boardStore = useBoardStore()
 const toast = useToast()
-const { startCircleSearch } = useVisualSearch()
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const openMenu = ref(false)
 const isAddModalOpen = ref(false)
@@ -231,18 +229,6 @@ function setTheme(theme: string) {
     >
       <Sparkles class="w-3.5 h-3.5 shrink-0" />
       <span class="hidden sm:inline whitespace-nowrap">AI解析</span>
-    </button>
-
-    <!-- 6. Galaxy AI かこって検索 -->
-    <button
-      type="button"
-      class="shrink-0 whitespace-nowrap flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-indigo-400 bg-canvas-card hover:bg-canvas-hover border border-indigo-500/30 transition-all shadow-xs"
-      title="画面上をドラッグして囲んだ部分の類似資料をAI検索"
-      aria-label="Galaxy AI かこって検索"
-      @click="startCircleSearch"
-    >
-      <Sparkles class="w-3.5 h-3.5 shrink-0 text-pink-400 animate-pulse" />
-      <span class="whitespace-nowrap">かこって検索</span>
     </button>
 
     <!-- 保存ステータス -->

@@ -17,20 +17,11 @@ import { useBoardStore } from '~/stores/boardStore'
 import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useImageProcessor } from '~/composables/useImageProcessor'
 import { useToast } from '~/composables/useToast'
-import { useVisualSearch } from '~/composables/useVisualSearch'
 
 const boardStore = useBoardStore()
 const toast = useToast()
 const { resolveMediaUrl } = useMediaUrl()
 const { copyToClipboard } = useImageProcessor()
-const { searchMediaItem } = useVisualSearch()
-
-function handleVisualSearch() {
-  if (!item.value) return
-  const id = item.value.id
-  boardStore.closeQuickLook()
-  searchMediaItem(id)
-}
 
 const item = computed(() => boardStore.quickLookItem)
 const closeBtnRef = ref<HTMLButtonElement | null>(null)
@@ -419,16 +410,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 
           <!-- アクション -->
           <div class="mt-auto space-y-1.5 pt-3 border-t border-canvas-border">
-            <button
-              type="button"
-              class="w-full py-2 rounded-lg bg-gradient-to-r from-cyan-500/10 via-indigo-500/15 to-pink-500/10 hover:from-cyan-500/20 hover:via-indigo-500/25 hover:to-pink-500/20 border border-indigo-500/30 text-ink text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
-              title="この画像の特徴から類似資料をAI検索"
-              @click="handleVisualSearch"
-            >
-              <Sparkles class="w-3.5 h-3.5 text-pink-400 animate-pulse" />
-              <span>この画像の類似資料をAI検索 (Galaxy AI)</span>
-            </button>
-
             <button
               type="button"
               class="w-full py-2 rounded-lg bg-brand text-brand-fg text-xs font-bold hover:bg-brand-hover transition-colors flex items-center justify-center gap-1.5"

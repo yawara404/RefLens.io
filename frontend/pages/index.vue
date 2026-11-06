@@ -30,7 +30,6 @@ import {
 import AppHeader from '~/components/ui/AppHeader.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
-import VisualSearchDrawer from '~/components/visual-search/VisualSearchDrawer.vue'
 import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
 import FolderActionsMenu from '~/components/ui/FolderActionsMenu.vue'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
@@ -73,6 +72,9 @@ const {
   isPredicting,
   suggestions: predictedSuggestions,
   libraryTags: predictedLibraryTags,
+  galaxyAIMatches,
+  galaxyAIMatchedIds,
+  galaxyAIIntent,
   predictionSource,
   queueQuery: queueSearchSuggest,
   clearSuggestions: clearSearchSuggest,
@@ -375,6 +377,9 @@ const filteredBookmarks = computed(() => {
     // 入力キーワードの直接マッチ
     if (corpus.includes(q)) return true
 
+    // Galaxy AI 視覚画像認識マッチ（タグの有無に関係なく被写体・画像特徴から自動抽出）
+    if (galaxyAIMatchedIds.value.includes(b.id)) return true
+
     // AI予測タグによる展開マッチ（「女の子」検索で「1girl」「girl」「少女」等もヒットさせる）
     if (isSemanticExpansionEnabled.value && predictedSuggestions.value.length > 0) {
       for (const sug of predictedSuggestions.value) {
@@ -388,6 +393,10 @@ const filteredBookmarks = computed(() => {
     return false
   })
 })
+
+function getGalaxyAIMatch(bookmarkId: string) {
+  return galaxyAIMatches.value.find(m => m.id === bookmarkId)
+}
 
 function resolveThumbnail(path?: string) {
   return resolveMediaUrl(path)
@@ -1672,7 +1681,7 @@ onMounted(async () => {
                 ref="smartSearchInputRef"
                 v-model="searchQuery"
                 type="search"
-                placeholder="タイトル・作者名・フォルダ・AIタグ・構図・ライティングで横断検索..."
+                placeholder="Galaxy AI 画像認識:「女の子」「水着」「猫」などタグなしでも画像から自動検索..."
                 class="w-full bg-canvas-bg border border-canvas-border-strong rounded-xl pl-10 pr-9 py-2.5 text-xs sm:text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-brand transition-colors"
                 aria-label="スマート総合検索キーワード"
               >
@@ -1685,6 +1694,22 @@ onMounted(async () => {
               >
                 <X class="w-4 h-4" />
               </button>
+            </div>
+
+            <!-- Galaxy AI 画像認識インジケーター（被写体自動検出） -->
+            <div
+              v-if="searchQuery.trim() && (galaxyAIIntent || galaxyAIMatchedIds.length)"
+              class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-brand/15 via-purple-500/10 to-transparent border border-brand/30 shadow-xs"
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <Sparkles class="w-4 h-4 text-brand shrink-0 animate-pulse" />
+                <p class="text-xs font-bold text-ink truncate">
+                  ✨ Galaxy AI 画像認識: <span class="text-brand">{{ galaxyAIIntent || '対象被写体' }}</span> を自動検出中
+                </p>
+              </div>
+              <span class="text-[11px] font-mono font-bold text-brand bg-brand/10 px-2 py-0.5 rounded-full shrink-0">
+                {{ galaxyAIMatchedIds.length || visibleBookmarks.length }} 件ヒット
+              </span>
             </div>
 
             <!-- AI予測検索（Ollama予測タグ & セマンティック展開） -->
@@ -2294,6 +2319,16 @@ onMounted(async () => {
                     Web
                   </span>
 
+                  <!-- Galaxy AI 認識バッジ（検索タブ時） -->
+                  <span
+                    v-if="activeSection === 'search' && searchQuery.trim() && getGalaxyAIMatch(b.id)"
+                    class="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-brand/90 text-brand-fg backdrop-blur-xs shadow-xs flex items-center gap-1 z-10"
+                    :title="getGalaxyAIMatch(b.id)?.reasons.join('\n')"
+                  >
+                    <Sparkles class="w-2.5 h-2.5" />
+                    <span>AI認識</span>
+                  </span>
+
                   <!-- ホバー・キーボードフォーカス時アクション -->
                   <div
                     class="hidden sm:flex absolute inset-0 bg-canvas-panel/75 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity p-2 flex-col justify-between"
@@ -2382,7 +2417,17 @@ onMounted(async () => {
                   loading="lazy"
                 >
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs font-semibold text-ink truncate">{{ b.title }}</p>
+                  <div class="flex items-center gap-1.5 truncate">
+                    <p class="text-xs font-semibold text-ink truncate">{{ b.title }}</p>
+                    <span
+                      v-if="activeSection === 'search' && searchQuery.trim() && getGalaxyAIMatch(b.id)"
+                      class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-brand/10 text-brand shrink-0 flex items-center gap-0.5"
+                      :title="getGalaxyAIMatch(b.id)?.reasons.join('\n')"
+                    >
+                      <Sparkles class="w-2.5 h-2.5" />
+                      <span>AI認識</span>
+                    </span>
+                  </div>
                   <p class="text-[11px] text-ink-subtle truncate flex items-center gap-1.5">
                     <span
                       class="w-2 h-2 rounded-full shrink-0"
@@ -2469,6 +2514,5 @@ onMounted(async () => {
     </div>
 
     <QuickLookModal />
-    <VisualSearchDrawer />
   </div>
 </template>

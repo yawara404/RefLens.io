@@ -218,3 +218,4 @@ async def execute_visual_search(
         "total_matches": len(matches),
         "matches": matches,
     }
+
