@@ -11,6 +11,7 @@ export const useBoardStore = defineStore('board', {
     items: [] as CanvasItem[],
     selectedItemIds: [] as string[],
     searchQuery: '',
+    searchPredictedTags: [] as string[],
     isSaving: false,
     isLoading: false,
     hasUnsavedChanges: false,
@@ -61,20 +62,37 @@ export const useBoardStore = defineStore('board', {
       return null
     },
 
-    /** 検索クエリに一致するアイテムのID（不一致は減光表示） */
+    /** 検索クエリに一致するアイテムのID（不一致は減光表示、AI予測タグも含む） */
     filteredItemIds(state): string[] {
       const q = state.searchQuery.toLowerCase().trim()
       if (!q) return state.items.map(i => i.id)
+
+      const pred = (state.searchPredictedTags || []).map(p => p.toLowerCase())
 
       return state.items
         .filter(item => {
           if (item.caption?.toLowerCase().includes(q)) return true
 
           const ai = item.ai_analysis
-          if (!ai) return false
-          if (ai.tags?.some(t => t.toLowerCase().includes(q))) return true
-          return [ai.composition, ai.lighting, ai.pose_anatomy, ai.costume_structure]
-            .some(field => field?.toLowerCase().includes(q))
+          if (ai) {
+            if (ai.tags?.some(t => t.toLowerCase().includes(q))) return true
+            if ([ai.composition, ai.lighting, ai.pose_anatomy, ai.costume_structure].some(field => field?.toLowerCase().includes(q))) {
+              return true
+            }
+          }
+
+          // AI予測タグによる展開一致
+          if (pred.length > 0) {
+            for (const p of pred) {
+              if (item.caption?.toLowerCase().includes(p)) return true
+              if (ai?.tags?.some(t => t.toLowerCase().includes(p))) return true
+              if ([ai?.composition, ai?.lighting, ai?.pose_anatomy, ai?.costume_structure].some(field => field?.toLowerCase().includes(p))) {
+                return true
+              }
+            }
+          }
+
+          return false
         })
         .map(i => i.id)
     },

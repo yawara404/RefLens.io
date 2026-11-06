@@ -270,6 +270,18 @@ def _resolve_item_palette(file_path: Optional[str], ai_palette: Optional[list]) 
     return list(ai_palette or [])
 
 
+@router.get("/search-suggest")
+def get_search_suggestions(
+    q: str = "",
+    limit: int = 8,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """検索キーワードに対する予測タグ・同義語（Ollama / 辞書 / ライブラリ内タグ照合）を取得"""
+    from app.services.search_suggest import predict_search_suggestions
+    return predict_search_suggestions(query=q, db=db, user_id=user.id, limit=limit)
+
+
 @router.get("/")
 def get_bookmarks(
     source_type: Optional[str] = None, # all, instagram, web_bookmark, local_upload

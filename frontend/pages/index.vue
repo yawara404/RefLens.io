@@ -25,6 +25,7 @@ import {
   Palette,
   RotateCcw,
   X,
+  Loader2,
 } from 'lucide-vue-next'
 import AppHeader from '~/components/ui/AppHeader.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
@@ -33,6 +34,7 @@ import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
 import FolderActionsMenu from '~/components/ui/FolderActionsMenu.vue'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import type { BookmarkItem, FolderItem } from '~/types'
+import { useSearchSuggest } from '~/composables/useSearchSuggest'
 import { useBoardStore } from '~/stores/boardStore'
 import { useAuthStore } from '~/stores/authStore'
 import { useMediaUrl } from '~/composables/useMediaUrl'
@@ -66,6 +68,24 @@ const cardViewRef = ref<HTMLElement | null>(null)
 const smartSearchInputRef = ref<HTMLInputElement | null>(null)
 
 const searchQuery = ref('')
+const {
+  isPredicting,
+  suggestions: predictedSuggestions,
+  libraryTags: predictedLibraryTags,
+  predictionSource,
+  queueQuery: queueSearchSuggest,
+  clearSuggestions: clearSearchSuggest,
+} = useSearchSuggest()
+
+const isSemanticExpansionEnabled = ref(true)
+
+watch(searchQuery, (newVal) => {
+  if (activeSection.value === 'search') {
+    queueSearchSuggest(newVal)
+  } else {
+    clearSearchSuggest()
+  }
+})
 const selectedSource = ref<'all' | 'pixiv' | 'instagram' | 'web_bookmark' | 'local_upload'>('all')
 const selectedFolder = ref<string | null>(null)
 const viewMode = ref<'grid' | 'list'>('grid')
@@ -349,8 +369,22 @@ const filteredBookmarks = computed(() => {
       b.ai_analysis?.composition || '',
       b.ai_analysis?.lighting || '',
       (b.ai_analysis?.palette || []).join(' '),
-    ].join(' ')
-    return corpus.toLowerCase().includes(q)
+    ].join(' ').toLowerCase()
+
+    // 入力キーワードの直接マッチ
+    if (corpus.includes(q)) return true
+
+    // AI予測タグによる展開マッチ（「女の子」検索で「1girl」「girl」「少女」等もヒットさせる）
+    if (isSemanticExpansionEnabled.value && predictedSuggestions.value.length > 0) {
+      for (const sug of predictedSuggestions.value) {
+        const sLower = sug.toLowerCase()
+        if (sLower && corpus.includes(sLower)) {
+          return true
+        }
+      }
+    }
+
+    return false
   })
 })
 
@@ -585,6 +619,7 @@ function resetFilters() {
   searchQuery.value = ''
   selectedColor.value = null
   sortOrder.value = 'newest'
+  clearSearchSuggest()
   cardViewRef.value?.scrollTo({ top: 0 })
 }
 
@@ -1645,10 +1680,87 @@ onMounted(async () => {
                 type="button"
                 class="absolute right-3 p-1 rounded-full text-ink-muted hover:text-ink transition-colors"
                 aria-label="検索キーワードをクリア"
-                @click="searchQuery = ''"
+                @click="searchQuery = ''; clearSearchSuggest()"
               >
                 <X class="w-4 h-4" />
               </button>
+            </div>
+
+            <!-- AI予測検索（Ollama予測タグ & セマンティック展開） -->
+            <div
+              v-if="searchQuery.trim()"
+              class="p-2.5 rounded-xl bg-canvas-bg/90 border border-canvas-border space-y-2 transition-all shadow-sm"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5 text-xs font-semibold text-ink">
+                  <Sparkles class="w-3.5 h-3.5 text-brand" :class="{ 'animate-pulse': isPredicting }" />
+                  <span>AI予測検索</span>
+                  <span v-if="isPredicting" class="text-[11px] text-ink-muted flex items-center gap-1">
+                    <Loader2 class="w-3 h-3 animate-spin text-brand" />
+                    <span>予測中...</span>
+                  </span>
+                  <span
+                    v-else-if="predictionSource === 'ollama'"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-brand/10 text-brand font-mono font-medium"
+                  >
+                    Ollama
+                  </span>
+                </div>
+
+                <!-- AI予測展開トグル -->
+                <button
+                  type="button"
+                  class="px-2 py-0.5 rounded-lg text-[11px] font-semibold border transition-all flex items-center gap-1"
+                  :class="isSemanticExpansionEnabled
+                    ? 'bg-brand/10 text-brand border-brand/40 hover:bg-brand/20'
+                    : 'bg-canvas-card text-ink-muted border-canvas-border hover:text-ink'"
+                  :title="isSemanticExpansionEnabled ? '予測タグによる展開検索が有効です' : '完全一致のみに制限します'"
+                  @click="isSemanticExpansionEnabled = !isSemanticExpansionEnabled"
+                >
+                  <Sparkles class="w-3 h-3" />
+                  <span>AI関連タグも自動展開:</span>
+                  <span class="font-bold">{{ isSemanticExpansionEnabled ? 'ON' : 'OFF' }}</span>
+                </button>
+              </div>
+
+              <!-- 予測候補タグのリスト -->
+              <div
+                v-if="predictedSuggestions.length || predictedLibraryTags.length"
+                class="flex flex-wrap items-center gap-1.5 pt-0.5"
+              >
+                <!-- ライブラリ内に実在する一致タグ -->
+                <button
+                  v-for="item in predictedLibraryTags"
+                  :key="'lib-' + item.tag"
+                  type="button"
+                  class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand text-brand-fg flex items-center gap-1 hover:brightness-110 transition-transform active:scale-95 shadow-sm"
+                  title="ライブラリ内のタグで絞り込み"
+                  @click="searchQuery = item.tag"
+                >
+                  <span>#{{ item.tag }}</span>
+                  <span class="text-[10px] opacity-80 font-mono">({{ item.count }}件)</span>
+                </button>
+
+                <!-- AI予測された同義語・英語タグ -->
+                <button
+                  v-for="tag in predictedSuggestions"
+                  :key="'sug-' + tag"
+                  type="button"
+                  class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all flex items-center gap-1 active:scale-95"
+                  :class="searchQuery.toLowerCase().includes(tag.toLowerCase())
+                    ? 'bg-brand/15 border-brand text-brand font-bold'
+                    : 'bg-canvas-card border-canvas-border text-ink hover:border-brand hover:text-brand hover:bg-canvas-hover'"
+                  title="このタグを検索クエリに適用"
+                  @click="searchQuery = tag"
+                >
+                  <span>{{ tag }}</span>
+                </button>
+              </div>
+
+              <!-- 展開検索のガイダンス表示 -->
+              <div v-if="isSemanticExpansionEnabled && predictedSuggestions.length" class="text-[11px] text-ink-muted flex items-center gap-1">
+                <span>💡「{{ searchQuery }}」の関連タグ（{{ predictedSuggestions.slice(0, 3).join(', ') }}等）を含む資料も自動ヒットしています</span>
+              </div>
             </div>
 
             <!-- ソース別・フォルダ別・並び順フィルタ -->
@@ -2101,8 +2213,15 @@ onMounted(async () => {
 
           <!-- 検索モード時の件数・表示切替バー -->
           <div v-if="activeSection === 'search'" class="flex items-center justify-between gap-2 px-1">
-            <span class="text-xs font-semibold text-ink-muted" aria-live="polite">
-              検索結果: <strong class="text-ink font-mono">{{ visibleBookmarks.length }}</strong> 件
+            <span class="text-xs font-semibold text-ink-muted flex items-center gap-1.5" aria-live="polite">
+              <span>検索結果: <strong class="text-ink font-mono">{{ visibleBookmarks.length }}</strong> 件</span>
+              <span
+                v-if="searchQuery.trim() && isSemanticExpansionEnabled && predictedSuggestions.length"
+                class="text-[11px] font-normal px-1.5 py-0.5 rounded bg-brand/10 text-brand flex items-center gap-1"
+              >
+                <Sparkles class="w-3 h-3 text-brand" />
+                <span>AI予測展開中</span>
+              </span>
             </span>
             <div class="flex items-center gap-0.5 p-0.5 rounded-xl border border-canvas-border-strong bg-canvas-panel" role="group" aria-label="表示形式の切り替え">
               <button
