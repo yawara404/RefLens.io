@@ -568,3 +568,4 @@ def search_galaxy_ai(
         "total": len(results),
         "suggested_queries": suggest_res.get("suggestions", [])[:5],
     }
+

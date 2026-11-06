@@ -26,6 +26,7 @@ import {
   RotateCcw,
   X,
   Loader2,
+  Tag,
 } from 'lucide-vue-next'
 import AppHeader from '~/components/ui/AppHeader.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
@@ -66,6 +67,8 @@ const isDraggingFiles = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const cardViewRef = ref<HTMLElement | null>(null)
 const smartSearchInputRef = ref<HTMLInputElement | null>(null)
+const searchContainerRef = ref<HTMLElement | null>(null)
+const isSuggestOpen = ref(false)
 
 const searchQuery = ref('')
 const {
@@ -81,6 +84,34 @@ const {
 } = useSearchSuggest()
 
 const isSemanticExpansionEnabled = ref(true)
+
+const SUGGEST_RECOMMENDED_KEYWORDS = [
+  { label: '女の子', icon: '✨', hint: 'Galaxy AI 被写体自動認識' },
+  { label: '水着', icon: '👙', hint: '水着・ビキニ' },
+  { label: '漫画', icon: '📖', hint: 'マンガ・コマ割り' },
+  { label: 'サイバーパンク', icon: '⚡', hint: 'ネオン・近未来' },
+  { label: '風景', icon: '🌄', hint: '背景・空・自然' },
+  { label: '猫', icon: '🐾', hint: '動物・ねこ' },
+  { label: '設定画', icon: '📐', hint: '三面図・キャラクターシート' },
+  { label: '初音ミク', icon: '👑', hint: 'ボーカロイド' },
+]
+
+function selectSuggestItem(val: string) {
+  searchQuery.value = val
+  isSuggestOpen.value = false
+}
+
+function handleSearchInputFocus() {
+  isSuggestOpen.value = true
+}
+
+function handleSearchInput(e: Event) {
+  isSuggestOpen.value = true
+}
+
+function closeSearchSuggest() {
+  isSuggestOpen.value = false
+}
 
 watch(searchQuery, (newVal) => {
   if (activeSection.value === 'search') {
@@ -344,6 +375,13 @@ const popularAiTags = computed(() => {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 14)
     .map(([tag, count]) => ({ tag, count }))
+})
+
+/** 検索クエリに合致するライブラリ内AIタグ（サジェスト用） */
+const matchingPopularTags = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return popularAiTags.value
+  return popularAiTags.value.filter(item => item.tag.toLowerCase().includes(q))
 })
 
 const filteredBookmarks = computed(() => {
@@ -933,12 +971,23 @@ async function handleDeleteBookmark(item: BookmarkItem) {
   if (deleted) toast.success('ライブラリから削除しました', item.title)
 }
 
+function onDocumentClickForSuggest(e: MouseEvent) {
+  if (searchContainerRef.value && !searchContainerRef.value.contains(e.target as Node)) {
+    isSuggestOpen.value = false
+  }
+}
+
 onMounted(async () => {
+  document.addEventListener('click', onDocumentClickForSuggest)
   restoreFolderOrder()
   restoreFolderSortOrder()
   await Promise.all([boardStore.fetchBookmarks(), boardStore.fetchFolders()])
   // サイドバーの「キャンバスを開く」リンク用に最初のボードをロードしておく
   await boardStore.loadFirstBoard()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClickForSuggest)
 })
 </script>
 
@@ -1674,119 +1723,211 @@ onMounted(async () => {
               </button>
             </div>
 
-            <!-- キーワード横断検索入力 -->
-            <div class="relative flex items-center">
-              <Search class="absolute left-3.5 w-4 h-4 text-ink-muted pointer-events-none" />
-              <input
-                ref="smartSearchInputRef"
-                v-model="searchQuery"
-                type="search"
-                placeholder="Galaxy AI 画像認識:「女の子」「水着」「猫」などタグなしでも画像から自動検索..."
-                class="w-full bg-canvas-bg border border-canvas-border-strong rounded-xl pl-10 pr-9 py-2.5 text-xs sm:text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-brand transition-colors"
-                aria-label="スマート総合検索キーワード"
-              >
-              <button
-                v-if="searchQuery"
-                type="button"
-                class="absolute right-3 p-1 rounded-full text-ink-muted hover:text-ink transition-colors"
-                aria-label="検索キーワードをクリア"
-                @click="searchQuery = ''; clearSearchSuggest()"
-              >
-                <X class="w-4 h-4" />
-              </button>
-            </div>
-
-            <!-- Galaxy AI 画像認識インジケーター（被写体自動検出） -->
-            <div
-              v-if="searchQuery.trim() && (galaxyAIIntent || galaxyAIMatchedIds.length)"
-              class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-brand/15 via-purple-500/10 to-transparent border border-brand/30 shadow-xs"
-            >
-              <div class="flex items-center gap-2 min-w-0">
-                <Sparkles class="w-4 h-4 text-brand shrink-0 animate-pulse" />
-                <p class="text-xs font-bold text-ink truncate">
-                  ✨ Galaxy AI 画像認識: <span class="text-brand">{{ galaxyAIIntent || '対象被写体' }}</span> を自動検出中
-                </p>
+            <!-- 検索入力コンテナ + 検索サジェスト・ドロップダウン（タグ検索統合） -->
+            <div ref="searchContainerRef" class="relative">
+              <!-- キーワード横断検索入力 -->
+              <div class="relative flex items-center">
+                <Search class="absolute left-3.5 w-4 h-4 text-ink-muted pointer-events-none" />
+                <input
+                  ref="smartSearchInputRef"
+                  v-model="searchQuery"
+                  type="search"
+                  placeholder="Galaxy AI 検索 (「女の子」「水着」「猫」など入力でサジェスト表示)..."
+                  class="w-full bg-canvas-bg border border-canvas-border-strong rounded-xl pl-10 pr-9 py-2.5 text-xs sm:text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-brand transition-colors"
+                  aria-label="スマート総合検索キーワード"
+                  @focus="handleSearchInputFocus"
+                  @input="handleSearchInput"
+                  @keydown.esc="closeSearchSuggest"
+                >
+                <button
+                  v-if="searchQuery"
+                  type="button"
+                  class="absolute right-3 p-1 rounded-full text-ink-muted hover:text-ink transition-colors"
+                  aria-label="検索キーワードをクリア"
+                  @click="searchQuery = ''; clearSearchSuggest(); closeSearchSuggest()"
+                >
+                  <X class="w-4 h-4" />
+                </button>
               </div>
-              <span class="text-[11px] font-mono font-bold text-brand bg-brand/10 px-2 py-0.5 rounded-full shrink-0">
-                {{ galaxyAIMatchedIds.length || visibleBookmarks.length }} 件ヒット
-              </span>
+
+              <!-- 検索サジェスト ドロップダウン (タグ検索・AI予測・被写体サジェストを統合) -->
+              <div
+                v-if="isSuggestOpen"
+                class="absolute top-full left-0 right-0 mt-1.5 z-40 bg-canvas-card border border-canvas-border shadow-2xl rounded-2xl overflow-hidden max-h-[380px] overflow-y-auto divide-y divide-canvas-border animate-in fade-in zoom-in-95 duration-100"
+              >
+                <!-- A. キーワード入力時 -->
+                <template v-if="searchQuery.trim()">
+                  <!-- Galaxy AI 視覚被写体認識サジェスト -->
+                  <div v-if="galaxyAIIntent || galaxyAIMatches.length" class="p-2.5 bg-brand/5 space-y-1.5">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-brand flex items-center gap-1">
+                      <Sparkles class="w-3 h-3 text-brand" />
+                      <span>Galaxy AI 視覚被写体認識</span>
+                    </p>
+                    <button
+                      type="button"
+                      class="w-full text-left p-2 rounded-xl bg-canvas-bg hover:bg-brand/10 border border-brand/20 transition-all flex items-center justify-between gap-2 group cursor-pointer"
+                      @click="selectSuggestItem(searchQuery)"
+                    >
+                      <div class="flex items-center gap-2 min-w-0">
+                        <span class="w-2 h-2 rounded-full bg-brand animate-ping shrink-0" />
+                        <div class="min-w-0">
+                          <p class="text-xs font-bold text-ink group-hover:text-brand truncate">
+                            ✨「{{ galaxyAIIntent || searchQuery }}」を画像から自動検出
+                          </p>
+                          <p class="text-[10px] text-ink-muted truncate">
+                            タグの有無に関係なく被写体特徴から抽出
+                          </p>
+                        </div>
+                      </div>
+                      <span class="text-xs font-mono font-bold text-brand bg-brand/10 px-2 py-0.5 rounded-full shrink-0">
+                        {{ galaxyAIMatchedIds.length || visibleBookmarks.length }} 件
+                      </span>
+                    </button>
+                  </div>
+
+                  <!-- 統合タグ検索（ライブラリ内のタグ候補） -->
+                  <div class="p-2.5 space-y-1.5">
+                    <div class="flex items-center justify-between">
+                      <p class="text-[10px] font-bold uppercase tracking-wider text-ink-muted flex items-center gap-1">
+                        <Tag class="w-3 h-3 text-brand" />
+                        <span>ライブラリのタグで検索</span>
+                      </p>
+                      <span v-if="isPredicting" class="text-[10px] text-brand flex items-center gap-1">
+                        <Loader2 class="w-2.5 h-2.5 animate-spin" />
+                        <span>予測中</span>
+                      </span>
+                    </div>
+
+                    <div v-if="predictedLibraryTags.length" class="flex flex-wrap gap-1.5">
+                      <button
+                        v-for="item in predictedLibraryTags"
+                        :key="'sug-lib-' + item.tag"
+                        type="button"
+                        class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand text-brand-fg flex items-center gap-1 hover:brightness-110 active:scale-95 transition-all shadow-2xs cursor-pointer"
+                        @click="selectSuggestItem(item.tag)"
+                      >
+                        <span>#{{ item.tag }}</span>
+                        <span class="text-[10px] opacity-80 font-mono">({{ item.count }}件)</span>
+                      </button>
+                    </div>
+                    <div v-else-if="matchingPopularTags.length" class="flex flex-wrap gap-1.5">
+                      <button
+                        v-for="item in matchingPopularTags"
+                        :key="'sug-pop-' + item.tag"
+                        type="button"
+                        class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-canvas-bg hover:bg-canvas-hover border border-canvas-border text-ink flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                        @click="selectSuggestItem(item.tag)"
+                      >
+                        <span>#{{ item.tag }}</span>
+                        <span class="text-[10px] text-ink-muted font-mono">({{ item.count }})</span>
+                      </button>
+                    </div>
+                    <p v-else class="text-[11px] text-ink-muted">
+                      「{{ searchQuery }}」に一致するタグはありません（AI視覚認識または予測キーワードが適用されます）
+                    </p>
+                  </div>
+
+                  <!-- AI予測同義語・派生キーワード (Ollama / 辞書) -->
+                  <div v-if="predictedSuggestions.length" class="p-2.5 space-y-1.5">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-ink-muted flex items-center gap-1">
+                      <Sparkles class="w-3 h-3 text-brand" />
+                      <span>AI予測・関連キーワード</span>
+                      <span v-if="predictionSource === 'ollama'" class="text-[9px] px-1 py-0.2 rounded bg-brand/10 text-brand font-mono font-medium">Ollama</span>
+                    </p>
+                    <div class="flex flex-wrap gap-1.5">
+                      <button
+                        v-for="sug in predictedSuggestions"
+                        :key="'sug-word-' + sug"
+                        type="button"
+                        class="px-2.5 py-1 rounded-lg text-xs font-medium border border-canvas-border hover:border-brand hover:text-brand bg-canvas-bg hover:bg-canvas-hover text-ink transition-all active:scale-95 cursor-pointer"
+                        @click="selectSuggestItem(sug)"
+                      >
+                        {{ sug }}
+                      </button>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- B. 入力が空の時（フォーカス時クイックサジェスト） -->
+                <template v-else>
+                  <!-- おすすめ被写体クイック検索 -->
+                  <div class="p-3 space-y-2">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-ink-muted flex items-center gap-1">
+                      <Sparkles class="w-3 h-3 text-brand" />
+                      <span>おすすめの被写体・ジャンル検索 (タグなしでも自動認識)</span>
+                    </p>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      <button
+                        v-for="item in SUGGEST_RECOMMENDED_KEYWORDS"
+                        :key="item.label"
+                        type="button"
+                        class="p-2 rounded-xl text-left bg-canvas-bg hover:bg-canvas-hover border border-canvas-border hover:border-brand/40 transition-all flex items-center gap-2 group cursor-pointer"
+                        @click="selectSuggestItem(item.label)"
+                      >
+                        <span class="text-base shrink-0">{{ item.icon }}</span>
+                        <div class="min-w-0">
+                          <p class="text-xs font-bold text-ink group-hover:text-brand truncate">{{ item.label }}</p>
+                          <p class="text-[9px] text-ink-muted truncate">{{ item.hint }}</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 統合された人気タグ一覧（全タグ） -->
+                  <div v-if="popularAiTags.length" class="p-3 space-y-2">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-ink-muted flex items-center gap-1">
+                      <Tag class="w-3 h-3 text-brand" />
+                      <span>人気のAI解析タグで絞り込み</span>
+                    </p>
+                    <div class="flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto">
+                      <button
+                        v-for="item in popularAiTags"
+                        :key="'pop-tag-' + item.tag"
+                        type="button"
+                        class="px-2.5 py-1 rounded-full text-[11px] font-medium border border-canvas-border hover:border-brand bg-canvas-bg hover:bg-canvas-hover text-ink transition-colors flex items-center gap-1 active:scale-95 cursor-pointer"
+                        @click="selectSuggestItem(item.tag)"
+                      >
+                        <span>#{{ item.tag }}</span>
+                        <span class="text-[10px] text-ink-muted font-mono">({{ item.count }})</span>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
 
-            <!-- AI予測検索（Ollama予測タグ & セマンティック展開） -->
+            <!-- 検索実行中のコンパクトステータス行（入力時のみ表示） -->
             <div
               v-if="searchQuery.trim()"
-              class="p-2.5 rounded-xl bg-canvas-bg/90 border border-canvas-border space-y-2 transition-all shadow-sm"
+              class="flex flex-wrap items-center justify-between gap-2 px-1 pt-0.5 text-xs text-ink-muted"
             >
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-center gap-1.5 text-xs font-semibold text-ink">
-                  <Sparkles class="w-3.5 h-3.5 text-brand" :class="{ 'animate-pulse': isPredicting }" />
-                  <span>AI予測検索</span>
-                  <span v-if="isPredicting" class="text-[11px] text-ink-muted flex items-center gap-1">
-                    <Loader2 class="w-3 h-3 animate-spin text-brand" />
-                    <span>予測中...</span>
-                  </span>
-                  <span
-                    v-else-if="predictionSource === 'ollama'"
-                    class="text-[10px] px-1.5 py-0.5 rounded bg-brand/10 text-brand font-mono font-medium"
-                  >
-                    Ollama
-                  </span>
-                </div>
-
-                <!-- AI予測展開トグル -->
-                <button
-                  type="button"
-                  class="px-2 py-0.5 rounded-lg text-[11px] font-semibold border transition-all flex items-center gap-1"
-                  :class="isSemanticExpansionEnabled
-                    ? 'bg-brand/10 text-brand border-brand/40 hover:bg-brand/20'
-                    : 'bg-canvas-card text-ink-muted border-canvas-border hover:text-ink'"
-                  :title="isSemanticExpansionEnabled ? '予測タグによる展開検索が有効です' : '完全一致のみに制限します'"
-                  @click="isSemanticExpansionEnabled = !isSemanticExpansionEnabled"
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span
+                  v-if="galaxyAIIntent || galaxyAIMatchedIds.length"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-brand/10 text-brand font-medium text-[11px]"
                 >
-                  <Sparkles class="w-3 h-3" />
-                  <span>AI関連タグも自動展開:</span>
-                  <span class="font-bold">{{ isSemanticExpansionEnabled ? 'ON' : 'OFF' }}</span>
-                </button>
+                  <Sparkles class="w-3 h-3 text-brand shrink-0" />
+                  <span>✨ Galaxy AI: <strong>{{ galaxyAIIntent || searchQuery }}</strong> ({{ visibleBookmarks.length }}件)</span>
+                </span>
+                <span v-else class="text-[11px]">
+                  「{{ searchQuery }}」の検索結果: <strong class="text-ink font-mono">{{ visibleBookmarks.length }}</strong> 件
+                </span>
               </div>
 
-              <!-- 予測候補タグのリスト -->
-              <div
-                v-if="predictedSuggestions.length || predictedLibraryTags.length"
-                class="flex flex-wrap items-center gap-1.5 pt-0.5"
+              <!-- AI予測展開トグル -->
+              <button
+                type="button"
+                class="text-[11px] px-2 py-0.5 rounded-lg border transition-colors flex items-center gap-1 cursor-pointer"
+                :class="isSemanticExpansionEnabled
+                  ? 'bg-brand/10 text-brand border-brand/30'
+                  : 'bg-canvas-bg text-ink-muted border-canvas-border hover:text-ink'"
+                :title="isSemanticExpansionEnabled ? '予測タグによる展開検索が有効です' : '完全一致のみに制限します'"
+                @click="isSemanticExpansionEnabled = !isSemanticExpansionEnabled"
               >
-                <!-- ライブラリ内に実在する一致タグ -->
-                <button
-                  v-for="item in predictedLibraryTags"
-                  :key="'lib-' + item.tag"
-                  type="button"
-                  class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand text-brand-fg flex items-center gap-1 hover:brightness-110 transition-transform active:scale-95 shadow-sm"
-                  title="ライブラリ内のタグで絞り込み"
-                  @click="searchQuery = item.tag"
-                >
-                  <span>#{{ item.tag }}</span>
-                  <span class="text-[10px] opacity-80 font-mono">({{ item.count }}件)</span>
-                </button>
-
-                <!-- AI予測された同義語・英語タグ -->
-                <button
-                  v-for="tag in predictedSuggestions"
-                  :key="'sug-' + tag"
-                  type="button"
-                  class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all flex items-center gap-1 active:scale-95"
-                  :class="searchQuery.toLowerCase().includes(tag.toLowerCase())
-                    ? 'bg-brand/15 border-brand text-brand font-bold'
-                    : 'bg-canvas-card border-canvas-border text-ink hover:border-brand hover:text-brand hover:bg-canvas-hover'"
-                  title="このタグを検索クエリに適用"
-                  @click="searchQuery = tag"
-                >
-                  <span>{{ tag }}</span>
-                </button>
-              </div>
-
-              <!-- 展開検索のガイダンス表示 -->
-              <div v-if="isSemanticExpansionEnabled && predictedSuggestions.length" class="text-[11px] text-ink-muted flex items-center gap-1">
-                <span>💡「{{ searchQuery }}」の関連タグ（{{ predictedSuggestions.slice(0, 3).join(', ') }}等）を含む資料も自動ヒットしています</span>
-              </div>
+                <Sparkles class="w-3 h-3" />
+                <span>AI関連タグ自動展開:</span>
+                <span class="font-bold">{{ isSemanticExpansionEnabled ? 'ON' : 'OFF' }}</span>
+              </button>
             </div>
 
             <!-- ソース別・フォルダ別・並び順フィルタ -->
@@ -1942,28 +2083,6 @@ onMounted(async () => {
               </div>
             </div>
 
-            <!-- AI解析タグのクイックサジェスト -->
-            <div v-if="popularAiTags.length" class="pt-2 border-t border-canvas-border space-y-1.5">
-              <p class="text-[11px] font-semibold text-ink-muted flex items-center gap-1">
-                <Sparkles class="w-3 h-3 text-brand" />
-                <span>AI解析タグでクイック検索</span>
-              </p>
-              <div class="flex flex-wrap gap-1.5">
-                <button
-                  v-for="item in popularAiTags"
-                  :key="item.tag"
-                  type="button"
-                  class="px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors"
-                  :class="searchQuery.trim() === item.tag
-                    ? 'bg-brand text-brand-fg border-brand font-bold'
-                    : 'bg-canvas-bg text-ink border-canvas-border hover:border-brand'"
-                  @click="toggleTagSearch(item.tag)"
-                >
-                  #{{ item.tag }}
-                  <span class="text-[10px] opacity-70 ml-0.5">({{ item.count }})</span>
-                </button>
-              </div>
-            </div>
           </section>
 
           <!-- ライブラリモード用: シンプルなフォルダ見出し & 切替バー -->
