@@ -18,7 +18,10 @@ import {
   RotateCcw,
   X,
   Sparkles,
+  Tag,
+  Loader2,
 } from 'lucide-vue-next'
+import { useSearchSuggest } from '~/composables/useSearchSuggest'
 import type { BookmarkItem, FolderItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
 import { useAuthStore } from '~/stores/authStore'
@@ -53,7 +56,35 @@ const selectedBookmarkId = ref<string | null>(null)
 const showUrlInput = ref(false)
 const inputUrl = ref('')
 const localSearch = ref('')
+const searchContainerRef = ref<HTMLElement | null>(null)
+const isSuggestOpen = ref(false)
 const sourceFilter = ref<'all' | 'pixiv' | 'instagram' | 'web_bookmark' | 'local_upload'>('all')
+
+const {
+  isPredicting,
+  suggestions: predictedSuggestions,
+  queueQuery: queueSearchSuggest,
+  clearSuggestions: clearSearchSuggest,
+} = useSearchSuggest()
+
+watch(localSearch, (newVal) => {
+  if (newVal.trim()) {
+    queueSearchSuggest(newVal)
+  } else {
+    clearSearchSuggest()
+  }
+})
+
+function selectSuggest(tag: string) {
+  localSearch.value = tag
+  isSuggestOpen.value = false
+}
+
+function onDocumentClick(e: MouseEvent) {
+  if (searchContainerRef.value && !searchContainerRef.value.contains(e.target as Node)) {
+    isSuggestOpen.value = false
+  }
+}
 
 const newFolderName = ref('')
 const showNewFolderInput = ref(false)
@@ -127,6 +158,12 @@ const popularAiTags = computed(() => {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([tag]) => tag)
+})
+
+const matchingPopularTags = computed(() => {
+  const q = localSearch.value.toLowerCase().trim()
+  if (!q) return popularAiTags.value
+  return popularAiTags.value.filter(t => t.toLowerCase().includes(q))
 })
 
 /** ブックマーク一覧のフィルタリング（キャンバスのsearchQueryとは独立） */
@@ -372,6 +409,7 @@ function onKeyDown(e: KeyboardEvent) {
 }
 
 onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('reflens:auth-changed', loadPixivBookmarks)
   if (!boardStore.hasLoadedBookmarks) boardStore.fetchBookmarks()
@@ -379,6 +417,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClick)
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('reflens:auth-changed', loadPixivBookmarks)
 })
@@ -608,36 +647,116 @@ const SOURCE_PILLS = [
       </button>
     </div>
 
-    <!-- 3B. 検索タブ時: スマート検索パネル（キーワード・取得元・AIタグ） -->
+    <!-- 3B. 検索タブ時: スマート検索パネル（検索サジェスト・タグ検索統合） -->
     <div v-if="activeTab === 'search'" class="px-3 py-2.5 border-b border-canvas-border space-y-2 shrink-0 bg-canvas-panel">
-      <div class="relative flex items-center">
-        <Search class="absolute left-2.5 w-3.5 h-3.5 text-ink-subtle pointer-events-none" />
-        <input
-          v-model="localSearch"
-          type="search"
-          placeholder="タイトル・作者・AIタグで横断検索..."
-          class="w-full bg-canvas-card border border-canvas-border-strong rounded-xl pl-8 pr-7 py-1.5 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition-colors"
-          aria-label="ブックマークを検索"
+      <!-- 検索入力 + サジェストドロップダウン -->
+      <div ref="searchContainerRef" class="relative">
+        <div class="relative flex items-center">
+          <Search class="absolute left-2.5 w-3.5 h-3.5 text-ink-subtle pointer-events-none" />
+          <input
+            v-model="localSearch"
+            type="search"
+            placeholder="サジェスト検索 (タグ・「女の子」など)..."
+            class="w-full bg-canvas-card border border-canvas-border-strong rounded-xl pl-8 pr-7 py-1.5 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition-colors"
+            aria-label="ブックマークを検索"
+            @focus="isSuggestOpen = true"
+            @input="isSuggestOpen = true"
+            @keydown.esc="isSuggestOpen = false"
+          >
+          <button
+            v-if="localSearch"
+            type="button"
+            class="absolute right-2 p-0.5 rounded-full text-ink-subtle hover:text-ink transition-colors cursor-pointer"
+            aria-label="検索をクリア"
+            @click="localSearch = ''; isSuggestOpen = false"
+          >
+            <X class="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <!-- サジェスト ドロップダウン (タグ検索統合) -->
+        <div
+          v-if="isSuggestOpen"
+          class="absolute top-full left-0 right-0 mt-1.5 z-50 bg-canvas-card border border-canvas-border shadow-2xl rounded-2xl overflow-hidden max-h-[300px] overflow-y-auto divide-y divide-canvas-border animate-in fade-in zoom-in-95 duration-100"
         >
-        <button
-          v-if="localSearch"
-          type="button"
-          class="absolute right-2 p-0.5 rounded-full text-ink-subtle hover:text-ink transition-colors"
-          aria-label="検索をクリア"
-          @click="localSearch = ''"
-        >
-          <X class="w-3.5 h-3.5" />
-        </button>
+          <!-- A. 入力がある時 -->
+          <template v-if="localSearch.trim()">
+            <!-- ライブラリタグ候補 -->
+            <div v-if="matchingPopularTags.length" class="p-2.5 space-y-1.5">
+              <p class="text-[10px] font-bold uppercase tracking-wider text-brand flex items-center gap-1">
+                <Tag class="w-3 h-3 text-brand" />
+                <span>タグ候補</span>
+              </p>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="tag in matchingPopularTags"
+                  :key="'sb-tag-' + tag"
+                  type="button"
+                  class="px-2 py-0.5 rounded-lg text-xs font-semibold bg-brand text-brand-fg flex items-center gap-1 hover:brightness-110 active:scale-95 transition-all shadow-2xs cursor-pointer"
+                  @click="selectSuggest(tag)"
+                >
+                  #{{ tag }}
+                </button>
+              </div>
+            </div>
+
+            <!-- AI予測・関連キーワード -->
+            <div v-if="predictedSuggestions.length" class="p-2.5 space-y-1.5">
+              <div class="flex items-center justify-between">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-ink-muted flex items-center gap-1">
+                  <Sparkles class="w-3 h-3 text-brand" />
+                  <span>AI予測キーワード</span>
+                </p>
+                <span v-if="isPredicting" class="text-[10px] text-brand flex items-center gap-1">
+                  <Loader2 class="w-2.5 h-2.5 animate-spin" />
+                  <span>推論中</span>
+                </span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="sug in predictedSuggestions"
+                  :key="'sb-sug-' + sug"
+                  type="button"
+                  class="px-2 py-0.5 rounded-lg text-xs font-medium border border-canvas-border hover:border-brand hover:text-brand bg-canvas-bg hover:bg-canvas-hover text-ink transition-all active:scale-95 cursor-pointer"
+                  @click="selectSuggest(sug)"
+                >
+                  {{ sug }}
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <!-- B. 入力が空の時（フォーカス時クイックサジェスト） -->
+          <template v-else>
+            <div v-if="popularAiTags.length" class="p-2.5 space-y-1.5">
+              <p class="text-[10px] font-bold uppercase tracking-wider text-ink-muted flex items-center gap-1">
+                <Tag class="w-3 h-3 text-brand" />
+                <span>人気のAI解析タグで絞り込み</span>
+              </p>
+              <div class="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
+                <button
+                  v-for="tag in popularAiTags"
+                  :key="'sb-pop-' + tag"
+                  type="button"
+                  class="px-2 py-0.5 rounded-full text-[11px] font-medium border border-canvas-border hover:border-brand bg-canvas-bg hover:bg-canvas-hover text-ink transition-all active:scale-95 cursor-pointer"
+                  @click="selectSuggest(tag)"
+                >
+                  #{{ tag }}
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
       </div>
 
       <!-- 取得元ピル -->
-      <div class="flex items-center justify-between gap-1">
+      <div class="flex items-center justify-between gap-1 pt-0.5">
         <div class="flex items-center gap-1 overflow-x-auto no-scrollbar">
           <button
             v-for="src in SOURCE_PILLS"
             :key="src.id"
             type="button"
-            class="px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-colors border shrink-0"
+            class="px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-colors border shrink-0 cursor-pointer"
             :class="sourceFilter === src.id
               ? 'bg-brand text-brand-fg border-brand'
               : 'bg-canvas-card text-ink-muted border-canvas-border hover:text-ink'"
@@ -650,27 +769,11 @@ const SOURCE_PILLS = [
         <button
           v-if="localSearch || sourceFilter !== 'all'"
           type="button"
-          class="p-1 rounded-lg text-ink-muted hover:text-ink shrink-0"
+          class="p-1 rounded-lg text-ink-muted hover:text-ink shrink-0 cursor-pointer"
           title="検索条件をリセット"
           @click="localSearch = ''; sourceFilter = 'all'"
         >
           <RotateCcw class="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      <!-- AIタグチップ -->
-      <div v-if="popularAiTags.length" class="flex items-center gap-1 overflow-x-auto no-scrollbar pt-0.5">
-        <button
-          v-for="tag in popularAiTags"
-          :key="tag"
-          type="button"
-          class="px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors border shrink-0"
-          :class="localSearch === tag
-            ? 'bg-brand-soft text-brand border-brand font-bold'
-            : 'bg-canvas-bg text-ink-subtle border-canvas-border hover:text-brand'"
-          @click="localSearch = localSearch === tag ? '' : tag"
-        >
-          #{{ tag }}
         </button>
       </div>
     </div>

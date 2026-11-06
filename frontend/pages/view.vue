@@ -24,6 +24,8 @@ import {
   SlidersHorizontal,
   Folder,
   CheckSquare,
+  Tag,
+  Loader2,
 } from 'lucide-vue-next'
 import AppHeader from '~/components/ui/AppHeader.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
@@ -38,6 +40,7 @@ import { useBackendUrl } from '~/composables/useBackendUrl'
 import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useToast } from '~/composables/useToast'
 import { useMobileNav } from '~/composables/useMobileNav'
+import { useSearchSuggest } from '~/composables/useSearchSuggest'
 
 const boardStore = useBoardStore()
 const pixiv = usePixiv()
@@ -47,6 +50,46 @@ const { resolveMediaUrl } = useMediaUrl()
 const { isOpen: isSidebarOpen } = useMobileNav()
 
 const searchInput = ref('')
+const searchContainerRef = ref<HTMLElement | null>(null)
+const isSuggestOpen = ref(false)
+
+const {
+  isPredicting,
+  suggestions: predictedSuggestions,
+  queueQuery: queueSearchSuggest,
+  clearSuggestions: clearSearchSuggest,
+} = useSearchSuggest()
+
+const PIXIV_POPULAR_TAGS = [
+  '女の子', 'オリジナル', '初音ミク', '風景', '水着', '猫',
+  'サイバーパンク', '漫画', 'ブルーアーカイブ', '美少女', '版権', 'VTuber'
+]
+
+const matchingPixivTags = computed(() => {
+  const q = searchInput.value.toLowerCase().trim()
+  if (!q) return PIXIV_POPULAR_TAGS
+  return PIXIV_POPULAR_TAGS.filter(t => t.toLowerCase().includes(q))
+})
+
+watch(searchInput, (newVal) => {
+  if (newVal.trim()) {
+    queueSearchSuggest(newVal)
+  } else {
+    clearSearchSuggest()
+  }
+})
+
+function selectPixivSuggest(val: string) {
+  searchInput.value = val
+  isSuggestOpen.value = false
+  submitSearch()
+}
+
+function onDocumentClickForPixivSuggest(e: MouseEvent) {
+  if (searchContainerRef.value && !searchContainerRef.value.contains(e.target as Node)) {
+    isSuggestOpen.value = false
+  }
+}
 const viewMainRef = ref<HTMLElement | null>(null)
 const activeCategory = ref('recommended')
 const isFilterModalOpen = ref(false)
@@ -394,6 +437,7 @@ function onViewKeyDown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  document.addEventListener('click', onDocumentClickForPixivSuggest)
   await pixiv.init()
   boardStore.fetchBookmarks()
 
@@ -404,6 +448,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClickForPixivSuggest)
   window.removeEventListener('reflens:auth-changed', onAuthChanged)
   window.removeEventListener('keydown', onViewKeyDown)
 })
@@ -596,35 +641,114 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 中段: フル幅検索バー（モバイルでも見切れない） -->
-          <form
-            class="relative flex items-center min-w-0"
-            @submit.prevent="submitSearch"
-          >
-            <Search class="absolute left-3 w-3.5 h-3.5 text-ink-subtle pointer-events-none" />
-            <input
-              v-model="searchInput"
-              type="search"
-              :placeholder="activeCategory === 'saved' ? '保存済みpixivを検索...' : 'タグ・キーワードで検索...'"
-              class="w-full bg-canvas-card border border-canvas-border rounded-xl pl-8 pr-20 py-1.5 sm:py-2 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-pixiv transition-colors"
-              aria-label="pixiv作品を検索"
+          <!-- 中段: フル幅検索バー + 検索サジェスト ドロップダウン -->
+          <div ref="searchContainerRef" class="relative">
+            <form
+              class="relative flex items-center min-w-0"
+              @submit.prevent="submitSearch(); isSuggestOpen = false"
             >
-            <button
-              v-if="searchInput"
-              type="button"
-              class="absolute right-14 p-1 text-ink-subtle hover:text-ink transition-colors"
-              aria-label="検索をクリア"
-              @click="searchInput = ''"
+              <Search class="absolute left-3 w-3.5 h-3.5 text-ink-subtle pointer-events-none" />
+              <input
+                v-model="searchInput"
+                type="search"
+                :placeholder="activeCategory === 'saved' ? '保存済みpixivを検索 (タグ・作者)...' : 'pixivサジェスト検索 (「女の子」「初音ミク」「風景」など)...'"
+                class="w-full bg-canvas-card border border-canvas-border rounded-xl pl-8 pr-20 py-1.5 sm:py-2 text-xs text-ink placeholder:text-ink-subtle focus:outline-none focus:border-pixiv transition-colors"
+                aria-label="pixiv作品を検索"
+                @focus="isSuggestOpen = true"
+                @input="isSuggestOpen = true"
+                @keydown.esc="isSuggestOpen = false"
+              >
+              <button
+                v-if="searchInput"
+                type="button"
+                class="absolute right-14 p-1 text-ink-subtle hover:text-ink transition-colors"
+                aria-label="検索をクリア"
+                @click="searchInput = ''; isSuggestOpen = false"
+              >
+                <X class="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="submit"
+                class="absolute right-1.5 px-2.5 py-1 rounded-lg bg-pixiv text-white hover:bg-pixiv-hover text-[11px] font-bold transition-colors cursor-pointer"
+              >
+                検索
+              </button>
+            </form>
+
+            <!-- pixiv 検索サジェスト ドロップダウン -->
+            <div
+              v-if="isSuggestOpen"
+              class="absolute top-full left-0 right-0 mt-1.5 z-40 bg-canvas-card border border-canvas-border shadow-2xl rounded-2xl overflow-hidden max-h-[360px] overflow-y-auto divide-y divide-canvas-border animate-in fade-in zoom-in-95 duration-100"
             >
-              <X class="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="submit"
-              class="absolute right-1.5 px-2.5 py-1 rounded-lg bg-pixiv text-white hover:bg-pixiv-hover text-[11px] font-bold transition-colors"
-            >
-              検索
-            </button>
-          </form>
+              <!-- 入力中サジェスト -->
+              <template v-if="searchInput.trim()">
+                <!-- 一致するpixivタグ -->
+                <div v-if="matchingPixivTags.length" class="p-2.5 space-y-1.5">
+                  <p class="text-[10px] font-bold uppercase tracking-wider text-pixiv flex items-center gap-1">
+                    <Tag class="w-3 h-3 text-pixiv" />
+                    <span>pixivタグ候補</span>
+                  </p>
+                  <div class="flex flex-wrap gap-1.5">
+                    <button
+                      v-for="tag in matchingPixivTags"
+                      :key="'pixiv-tag-' + tag"
+                      type="button"
+                      class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-pixiv text-white flex items-center gap-1 hover:brightness-110 active:scale-95 transition-all shadow-2xs cursor-pointer"
+                      @click="selectPixivSuggest(tag)"
+                    >
+                      #{{ tag }}
+                    </button>
+                  </div>
+                </div>
+
+                <!-- AI予測・関連キーワード (Ollama / 辞書) -->
+                <div v-if="predictedSuggestions.length" class="p-2.5 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-ink-muted flex items-center gap-1">
+                      <Sparkles class="w-3 h-3 text-pixiv" />
+                      <span>AI予測・関連キーワード</span>
+                    </p>
+                    <span v-if="isPredicting" class="text-[10px] text-pixiv flex items-center gap-1">
+                      <Loader2 class="w-2.5 h-2.5 animate-spin" />
+                      <span>予測中</span>
+                    </span>
+                  </div>
+                  <div class="flex flex-wrap gap-1.5">
+                    <button
+                      v-for="sug in predictedSuggestions"
+                      :key="'pixiv-sug-' + sug"
+                      type="button"
+                      class="px-2.5 py-1 rounded-lg text-xs font-medium border border-canvas-border hover:border-pixiv hover:text-pixiv bg-canvas-bg hover:bg-canvas-hover text-ink transition-all active:scale-95 cursor-pointer"
+                      @click="selectPixivSuggest(sug)"
+                    >
+                      {{ sug }}
+                    </button>
+                  </div>
+                </div>
+              </template>
+
+              <!-- 未入力時（フォーカス時クイックサジェスト） -->
+              <template v-else>
+                <div class="p-3 space-y-2">
+                  <p class="text-[10px] font-bold uppercase tracking-wider text-ink-muted flex items-center gap-1">
+                    <Sparkles class="w-3 h-3 text-pixiv" />
+                    <span>人気のpixivイラストタグで検索</span>
+                  </p>
+                  <div class="flex flex-wrap gap-1.5">
+                    <button
+                      v-for="tag in PIXIV_POPULAR_TAGS"
+                      :key="'pixiv-pop-' + tag"
+                      type="button"
+                      class="px-2.5 py-1 rounded-full text-[11px] font-medium border border-canvas-border hover:border-pixiv hover:text-pixiv bg-canvas-bg hover:bg-canvas-hover text-ink transition-all active:scale-95 cursor-pointer"
+                      @click="selectPixivSuggest(tag)"
+                    >
+                      #{{ tag }}
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
 
           <!-- 下段（モバイル向けクイックカテゴリ切替） -->
           <div class="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
