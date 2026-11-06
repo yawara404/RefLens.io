@@ -1,8 +1,8 @@
 """
-RefLens.io Galaxy AI Visual Intelligence サービス
+RefLens.io Ollama AI Visual Intelligence サービス
 
-Galaxy スマートフォンのギャラリーアプリ（Galaxy AI / Object Recognition）や
-Google フォトのように、ユーザーが手動でタグ付けしていなくても、
+Ollama AI / 視覚特徴認識により、
+ユーザーが手動でタグ付けしていなくても、
 AIが画像の中身（被写体、性別、キャラクター、動物、衣装、構図、色彩、ジャンル）を
 自動認識し、タグの有無に関係なく瞬時に画像を検索・予測抽出する。
 """
@@ -434,7 +434,7 @@ def index_all_media_visual_intelligence(db: Session, force: bool = False) -> int
                 updated_count += 1
 
     db.commit()
-    logger.info("Galaxy AI visual intelligence indexing complete. Updated: %d items", updated_count)
+    logger.info("Ollama AI visual intelligence indexing complete. Updated: %d items", updated_count)
     return updated_count
 
 
@@ -445,7 +445,7 @@ def search_galaxy_ai(
     limit: int = 50,
 ) -> Dict[str, Any]:
     """
-    Galaxy AI ギャラリー風 視覚セマンティック画像検索。
+    Ollama AI 視覚セマンティック画像検索。
     タグの有無に関係なく、ユーザーの自然言語クエリから被写体・色彩・構図・スタイルを認識し、
     該当する全画像を自動抽出・ランキングする。
     """
@@ -515,7 +515,7 @@ def search_galaxy_ai(
             score += 35.0
             reasons.append(f"タグ一致: #{q}")
 
-        # B. Galaxy AI 視覚被写体マッチ（タグがなくても画像認識から抽出）
+        # B. Ollama AI 視覚被写体マッチ（タグがなくても画像認識から抽出）
         for dc in detected_concepts:
             c_label = dc["label"]
             c_keys = dc["keys"]
@@ -528,10 +528,10 @@ def search_galaxy_ai(
 
             if subject_hit or tag_hit or feature_hit:
                 score += 50.0
-                reasons.append(f"✨ Galaxy AI 認識: {c_label}")
+                reasons.append(f"✨ Ollama AI 認識: {c_label}")
             elif comp_hit:
                 score += 25.0
-                reasons.append(f"✨ Galaxy AI 構図/色彩: {c_label}")
+                reasons.append(f"✨ Ollama AI 構図/色彩: {c_label}")
 
         # C. 拡張キーワードマッチ
         for mk in matched_keys:
@@ -568,4 +568,8 @@ def search_galaxy_ai(
         "total": len(results),
         "suggested_queries": suggest_res.get("suggestions", [])[:5],
     }
+
+
+search_ollama_ai = search_galaxy_ai
+
 

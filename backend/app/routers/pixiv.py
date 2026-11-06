@@ -7,10 +7,13 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 import time
 from typing import Annotated, List, Optional
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 from fastapi import (
     APIRouter,
@@ -384,7 +387,32 @@ async def get_pixiv_feed(
     if cached and time.monotonic() - cached[0] < 30:
         return cached[1]
 
-    client = await _client_for(db, user)
+    try:
+        client = await _client_for(db, user)
+    except PixivApiError as exc:
+        logger.warning("Pixiv client init error, falling back to demo feed: %s", exc)
+        items = _filter_demo(category, query, tag)
+        return {
+            "mode": "demo",
+            "category": category,
+            "page": page,
+            "total": len(items),
+            "has_next": False,
+            "items": items,
+            "notice": "Pixivの認証セッションが切れました。右上の「Pixivに接続」から再ログインしてください。",
+        }
+    except Exception as exc:
+        logger.error("Unexpected Pixiv client init error: %s", exc)
+        items = _filter_demo(category, query, tag)
+        return {
+            "mode": "demo",
+            "category": category,
+            "page": page,
+            "total": len(items),
+            "has_next": False,
+            "items": items,
+            "notice": "Pixiv接続でエラーが発生したためデモフィードを表示しています。再ログインをお試しください。",
+        }
 
     try:
         if category == "recommended":

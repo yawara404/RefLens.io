@@ -148,7 +148,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative inline-block text-left">
+  <div
+    class="inline-block text-left"
+    :class="isOpen ? 'relative z-[85]' : 'relative'"
+  >
     <!-- トリガーボタン -->
     <button
       ref="triggerRef"
@@ -182,7 +185,7 @@ onBeforeUnmount(() => {
     <div
       v-if="isOpen"
       ref="popoverRef"
-      class="absolute z-50 mt-1 w-60 rounded-2xl border border-canvas-border-strong bg-canvas-panel shadow-pop p-1.5 flex flex-col gap-1 text-xs animate-scale-in"
+      class="absolute z-[90] mt-1 w-60 rounded-2xl border border-canvas-border-strong bg-canvas-panel shadow-pop p-1.5 flex flex-col gap-1 text-xs animate-scale-in"
       :class="[
         align === 'right' ? 'right-0' : 'left-0',
         align === 'top' ? 'bottom-full mb-1 mt-0' : 'top-full'

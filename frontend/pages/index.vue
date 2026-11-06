@@ -75,9 +75,9 @@ const {
   isPredicting,
   suggestions: predictedSuggestions,
   libraryTags: predictedLibraryTags,
-  galaxyAIMatches,
-  galaxyAIMatchedIds,
-  galaxyAIIntent,
+  ollamaAIMatches,
+  ollamaAIMatchedIds,
+  ollamaAIIntent,
   predictionSource,
   queueQuery: queueSearchSuggest,
   clearSuggestions: clearSearchSuggest,
@@ -86,7 +86,7 @@ const {
 const isSemanticExpansionEnabled = ref(true)
 
 const SUGGEST_RECOMMENDED_KEYWORDS = [
-  { label: '女の子', icon: '✨', hint: 'Galaxy AI 被写体自動認識' },
+  { label: '女の子', icon: '✨', hint: 'Ollama AI 被写体自動認識' },
   { label: '水着', icon: '👙', hint: '水着・ビキニ' },
   { label: '漫画', icon: '📖', hint: 'マンガ・コマ割り' },
   { label: 'サイバーパンク', icon: '⚡', hint: 'ネオン・近未来' },
@@ -415,8 +415,8 @@ const filteredBookmarks = computed(() => {
     // 入力キーワードの直接マッチ
     if (corpus.includes(q)) return true
 
-    // Galaxy AI 視覚画像認識マッチ（タグの有無に関係なく被写体・画像特徴から自動抽出）
-    if (galaxyAIMatchedIds.value.includes(b.id)) return true
+    // Ollama AI 視覚画像認識マッチ（タグの有無に関係なく被写体・画像特徴から自動抽出）
+    if (ollamaAIMatchedIds.value.includes(b.id)) return true
 
     // AI予測タグによる展開マッチ（「女の子」検索で「1girl」「girl」「少女」等もヒットさせる）
     if (isSemanticExpansionEnabled.value && predictedSuggestions.value.length > 0) {
@@ -432,8 +432,8 @@ const filteredBookmarks = computed(() => {
   })
 })
 
-function getGalaxyAIMatch(bookmarkId: string) {
-  return galaxyAIMatches.value.find(m => m.id === bookmarkId)
+function getOllamaAIMatch(bookmarkId: string) {
+  return ollamaAIMatches.value.find(m => m.id === bookmarkId)
 }
 
 function resolveThumbnail(path?: string) {
@@ -1732,7 +1732,7 @@ onBeforeUnmount(() => {
                   ref="smartSearchInputRef"
                   v-model="searchQuery"
                   type="search"
-                  placeholder="Galaxy AI 検索 (「女の子」「水着」「猫」など入力でサジェスト表示)..."
+                  placeholder="Ollama AI 検索 (「女の子」「水着」「猫」など入力でサジェスト表示)..."
                   class="w-full bg-canvas-bg border border-canvas-border-strong rounded-xl pl-10 pr-9 py-2.5 text-xs sm:text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:border-brand transition-colors"
                   aria-label="スマート総合検索キーワード"
                   @focus="handleSearchInputFocus"
@@ -1757,11 +1757,11 @@ onBeforeUnmount(() => {
               >
                 <!-- A. キーワード入力時 -->
                 <template v-if="searchQuery.trim()">
-                  <!-- Galaxy AI 視覚被写体認識サジェスト -->
-                  <div v-if="galaxyAIIntent || galaxyAIMatches.length" class="p-2.5 bg-brand/5 space-y-1.5">
+                  <!-- Ollama AI 視覚被写体認識サジェスト -->
+                  <div v-if="ollamaAIIntent || ollamaAIMatches.length" class="p-2.5 bg-brand/5 space-y-1.5">
                     <p class="text-[10px] font-bold uppercase tracking-wider text-brand flex items-center gap-1">
                       <Sparkles class="w-3 h-3 text-brand" />
-                      <span>Galaxy AI 視覚被写体認識</span>
+                      <span>Ollama AI 視覚被写体認識</span>
                     </p>
                     <button
                       type="button"
@@ -1772,7 +1772,7 @@ onBeforeUnmount(() => {
                         <span class="w-2 h-2 rounded-full bg-brand animate-ping shrink-0" />
                         <div class="min-w-0">
                           <p class="text-xs font-bold text-ink group-hover:text-brand truncate">
-                            ✨「{{ galaxyAIIntent || searchQuery }}」を画像から自動検出
+                            ✨「{{ ollamaAIIntent || searchQuery }}」を画像から自動検出
                           </p>
                           <p class="text-[10px] text-ink-muted truncate">
                             タグの有無に関係なく被写体特徴から抽出
@@ -1780,7 +1780,7 @@ onBeforeUnmount(() => {
                         </div>
                       </div>
                       <span class="text-xs font-mono font-bold text-brand bg-brand/10 px-2 py-0.5 rounded-full shrink-0">
-                        {{ galaxyAIMatchedIds.length || visibleBookmarks.length }} 件
+                        {{ ollamaAIMatchedIds.length || visibleBookmarks.length }} 件
                       </span>
                     </button>
                   </div>
@@ -1903,11 +1903,11 @@ onBeforeUnmount(() => {
             >
               <div class="flex items-center gap-1.5 flex-wrap">
                 <span
-                  v-if="galaxyAIIntent || galaxyAIMatchedIds.length"
+                  v-if="ollamaAIIntent || ollamaAIMatchedIds.length"
                   class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-brand/10 text-brand font-medium text-[11px]"
                 >
                   <Sparkles class="w-3 h-3 text-brand shrink-0" />
-                  <span>✨ Galaxy AI: <strong>{{ galaxyAIIntent || searchQuery }}</strong> ({{ visibleBookmarks.length }}件)</span>
+                  <span>✨ Ollama AI: <strong>{{ ollamaAIIntent || searchQuery }}</strong> ({{ visibleBookmarks.length }}件)</span>
                 </span>
                 <span v-else class="text-[11px]">
                   「{{ searchQuery }}」の検索結果: <strong class="text-ink font-mono">{{ visibleBookmarks.length }}</strong> 件
@@ -2438,11 +2438,11 @@ onBeforeUnmount(() => {
                     Web
                   </span>
 
-                  <!-- Galaxy AI 認識バッジ（検索タブ時） -->
+                  <!-- Ollama AI 認識バッジ（検索タブ時） -->
                   <span
-                    v-if="activeSection === 'search' && searchQuery.trim() && getGalaxyAIMatch(b.id)"
+                    v-if="activeSection === 'search' && searchQuery.trim() && getOllamaAIMatch(b.id)"
                     class="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-brand/90 text-brand-fg backdrop-blur-xs shadow-xs flex items-center gap-1 z-10"
-                    :title="getGalaxyAIMatch(b.id)?.reasons.join('\n')"
+                    :title="getOllamaAIMatch(b.id)?.reasons.join('\n')"
                   >
                     <Sparkles class="w-2.5 h-2.5" />
                     <span>AI認識</span>
@@ -2539,9 +2539,9 @@ onBeforeUnmount(() => {
                   <div class="flex items-center gap-1.5 truncate">
                     <p class="text-xs font-semibold text-ink truncate">{{ b.title }}</p>
                     <span
-                      v-if="activeSection === 'search' && searchQuery.trim() && getGalaxyAIMatch(b.id)"
+                      v-if="activeSection === 'search' && searchQuery.trim() && getOllamaAIMatch(b.id)"
                       class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-brand/10 text-brand shrink-0 flex items-center gap-0.5"
-                      :title="getGalaxyAIMatch(b.id)?.reasons.join('\n')"
+                      :title="getOllamaAIMatch(b.id)?.reasons.join('\n')"
                     >
                       <Sparkles class="w-2.5 h-2.5" />
                       <span>AI認識</span>

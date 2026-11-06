@@ -1,5 +1,5 @@
 """
-RefLens.io Galaxy AI 風 視覚画像検索（Visual Search / かこって検索）サービス。
+RefLens.io 視覚画像検索（Visual Search）サービス。
 
 画像全体または「かこって選択」した切り抜き領域（Crop）から、
 被写体・衣装・ポーズ・構図・ライティング・色彩を AI 解析し、

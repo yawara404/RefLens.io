@@ -270,14 +270,15 @@ def _resolve_item_palette(file_path: Optional[str], ai_palette: Optional[list]) 
     return list(ai_palette or [])
 
 
+@router.get("/ollama-search")
 @router.get("/galaxy-search")
-def galaxy_ai_search(
+def ollama_ai_search(
     q: str = "",
     limit: int = 50,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Galaxy AI ギャラリー風 視覚セマンティック画像検索（被写体・構図・色彩認識）"""
+    """Ollama AI ギャラリー風 視覚セマンティック画像検索（被写体・構図・色彩認識）"""
     from app.services.visual_intelligence import search_galaxy_ai
     return search_galaxy_ai(query=q, db=db, user_id=user.id, limit=limit)
 
@@ -289,7 +290,7 @@ def get_search_suggestions(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """検索キーワードに対する予測タグ・同義語（Ollama / 辞書）および Galaxy AI 認識結果を取得"""
+    """検索キーワードに対する予測タグ・同義語（Ollama / 辞書）および Ollama AI 認識結果を取得"""
     from app.services.search_suggest import predict_search_suggestions
     from app.services.visual_intelligence import search_galaxy_ai
 
@@ -297,16 +298,20 @@ def get_search_suggestions(
     if q.strip():
         try:
             galaxy_res = search_galaxy_ai(query=q, db=db, user_id=user.id, limit=30)
-            res["galaxy_ai"] = {
+            ai_data = {
                 "intent": galaxy_res.get("intent"),
                 "matched_ids": galaxy_res.get("matched_ids", []),
                 "total": galaxy_res.get("total", 0),
                 "matches": galaxy_res.get("matches", []),
             }
+            res["ollama_ai"] = ai_data
+            res["galaxy_ai"] = ai_data
         except Exception as exc:
-            logger.debug("Galaxy AI search integrate error: %s", exc)
+            logger.debug("Ollama AI search integrate error: %s", exc)
+            res["ollama_ai"] = None
             res["galaxy_ai"] = None
     else:
+        res["ollama_ai"] = None
         res["galaxy_ai"] = None
 
     return res

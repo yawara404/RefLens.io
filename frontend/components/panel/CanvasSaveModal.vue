@@ -74,13 +74,13 @@ async function handleSave() {
       @click.self="emit('close')"
     >
       <div
-        class="w-full max-w-lg rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
+        class="w-full max-w-lg rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop relative overflow-visible animate-scale-in"
         role="dialog"
         aria-modal="true"
         aria-label="キャンバス上の資料を一括フォルダ保存"
       >
         <!-- ヘッダー -->
-        <div class="px-4 py-3.5 border-b border-canvas-border flex items-center justify-between">
+        <div class="px-4 py-3.5 border-b border-canvas-border flex items-center justify-between rounded-t-2xl bg-canvas-panel">
           <div class="flex items-center gap-2">
             <div class="p-2 rounded-xl bg-brand text-brand-fg">
               <Folder class="w-4 h-4" />
@@ -131,7 +131,7 @@ async function handleSave() {
           </div>
 
           <!-- 保存先フォルダ選択 -->
-          <div class="space-y-2 p-3 rounded-xl bg-canvas-sunken/60 border border-canvas-border">
+          <div class="space-y-2 p-3 rounded-xl bg-canvas-sunken/60 border border-canvas-border relative z-20">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold text-ink flex items-center gap-1.5">
                 <Bookmark class="w-3.5 h-3.5 text-brand" />

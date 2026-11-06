@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { useBackendUrl } from '~/composables/useBackendUrl'
 
-export interface GalaxyAIMatch {
+export interface OllamaAIMatch {
   id: string
   title: string
   score: number
@@ -9,24 +9,29 @@ export interface GalaxyAIMatch {
   file_path: string
 }
 
-export interface GalaxyAIResult {
+export type GalaxyAIMatch = OllamaAIMatch
+
+export interface OllamaAIResult {
   intent: string | null
   matched_ids: string[]
   total: number
-  matches: GalaxyAIMatch[]
+  matches: OllamaAIMatch[]
 }
+
+export type GalaxyAIResult = OllamaAIResult
 
 export interface SearchSuggestResult {
   query: string
   source: 'ollama' | 'heuristic' | 'empty'
   suggestions: string[]
   library_tags: { tag: string; count: number }[]
-  galaxy_ai?: GalaxyAIResult | null
+  ollama_ai?: OllamaAIResult | null
+  galaxy_ai?: OllamaAIResult | null
 }
 
 const globalCache = new Map<string, SearchSuggestResult>()
 
-// フロントエンド即応用の Galaxy AI 概念辞書（0ms レスポンス）
+// フロントエンド即応用の Ollama AI 概念辞書（0ms レスポンス）
 const FRONTEND_VISUAL_CONCEPTS: Record<string, { label: string; keys: string[] }> = {
   女の子: {
     label: '女の子 (女性キャラクター / 少女)',
@@ -99,9 +104,9 @@ export function useSearchSuggest() {
   const isPredicting = ref(false)
   const suggestions = ref<string[]>([])
   const libraryTags = ref<{ tag: string; count: number }[]>([])
-  const galaxyAIMatches = ref<GalaxyAIMatch[]>([])
-  const galaxyAIMatchedIds = ref<string[]>([])
-  const galaxyAIIntent = ref<string | null>(null)
+  const ollamaAIMatches = ref<OllamaAIMatch[]>([])
+  const ollamaAIMatchedIds = ref<string[]>([])
+  const ollamaAIIntent = ref<string | null>(null)
   const lastQuery = ref('')
   const predictionSource = ref<'ollama' | 'heuristic' | 'empty'>('empty')
 
@@ -110,12 +115,12 @@ export function useSearchSuggest() {
   function applyLocalVisualConcepts(query: string) {
     const q = query.trim().toLowerCase()
     if (!q) {
-      galaxyAIIntent.value = null
+      ollamaAIIntent.value = null
       return
     }
     for (const [concept, defn] of Object.entries(FRONTEND_VISUAL_CONCEPTS)) {
       if (defn.keys.some(k => k.toLowerCase() === q || q.includes(k.toLowerCase()) || k.toLowerCase().includes(q))) {
-        galaxyAIIntent.value = defn.label
+        ollamaAIIntent.value = defn.label
         // ローカル予測キーワードの補強
         for (const k of defn.keys) {
           if (!suggestions.value.includes(k) && k !== q) {
@@ -132,9 +137,9 @@ export function useSearchSuggest() {
     if (!q) {
       suggestions.value = []
       libraryTags.value = []
-      galaxyAIMatches.value = []
-      galaxyAIMatchedIds.value = []
-      galaxyAIIntent.value = null
+      ollamaAIMatches.value = []
+      ollamaAIMatchedIds.value = []
+      ollamaAIIntent.value = null
       lastQuery.value = ''
       predictionSource.value = 'empty'
       isPredicting.value = false
@@ -149,11 +154,12 @@ export function useSearchSuggest() {
       suggestions.value = cached.suggestions
       libraryTags.value = cached.library_tags
       predictionSource.value = cached.source
-      if (cached.galaxy_ai) {
-        galaxyAIMatches.value = cached.galaxy_ai.matches || []
-        galaxyAIMatchedIds.value = cached.galaxy_ai.matched_ids || []
-        if (cached.galaxy_ai.intent) {
-          galaxyAIIntent.value = cached.galaxy_ai.intent
+      const aiData = cached.ollama_ai || cached.galaxy_ai
+      if (aiData) {
+        ollamaAIMatches.value = aiData.matches || []
+        ollamaAIMatchedIds.value = aiData.matched_ids || []
+        if (aiData.intent) {
+          ollamaAIIntent.value = aiData.intent
         }
       }
       return
@@ -168,11 +174,12 @@ export function useSearchSuggest() {
         suggestions.value = res.suggestions || []
         libraryTags.value = res.library_tags || []
         predictionSource.value = res.source || 'heuristic'
-        if (res.galaxy_ai) {
-          galaxyAIMatches.value = res.galaxy_ai.matches || []
-          galaxyAIMatchedIds.value = res.galaxy_ai.matched_ids || []
-          if (res.galaxy_ai.intent) {
-            galaxyAIIntent.value = res.galaxy_ai.intent
+        const aiData = res.ollama_ai || res.galaxy_ai
+        if (aiData) {
+          ollamaAIMatches.value = aiData.matches || []
+          ollamaAIMatchedIds.value = aiData.matched_ids || []
+          if (aiData.intent) {
+            ollamaAIIntent.value = aiData.intent
           }
         }
         // フロントエンド概念も追加適用
@@ -198,9 +205,9 @@ export function useSearchSuggest() {
     if (!q) {
       suggestions.value = []
       libraryTags.value = []
-      galaxyAIMatches.value = []
-      galaxyAIMatchedIds.value = []
-      galaxyAIIntent.value = null
+      ollamaAIMatches.value = []
+      ollamaAIMatchedIds.value = []
+      ollamaAIIntent.value = null
       lastQuery.value = ''
       isPredicting.value = false
       return
@@ -215,11 +222,12 @@ export function useSearchSuggest() {
       suggestions.value = cached.suggestions
       libraryTags.value = cached.library_tags
       predictionSource.value = cached.source
-      if (cached.galaxy_ai) {
-        galaxyAIMatches.value = cached.galaxy_ai.matches || []
-        galaxyAIMatchedIds.value = cached.galaxy_ai.matched_ids || []
-        if (cached.galaxy_ai.intent) {
-          galaxyAIIntent.value = cached.galaxy_ai.intent
+      const aiData = cached.ollama_ai || cached.galaxy_ai
+      if (aiData) {
+        ollamaAIMatches.value = aiData.matches || []
+        ollamaAIMatchedIds.value = aiData.matched_ids || []
+        if (aiData.intent) {
+          ollamaAIIntent.value = aiData.intent
         }
       }
       return
@@ -237,9 +245,9 @@ export function useSearchSuggest() {
     }
     suggestions.value = []
     libraryTags.value = []
-    galaxyAIMatches.value = []
-    galaxyAIMatchedIds.value = []
-    galaxyAIIntent.value = null
+    ollamaAIMatches.value = []
+    ollamaAIMatchedIds.value = []
+    ollamaAIIntent.value = null
     lastQuery.value = ''
     isPredicting.value = false
     predictionSource.value = 'empty'
@@ -249,9 +257,13 @@ export function useSearchSuggest() {
     isPredicting,
     suggestions,
     libraryTags,
-    galaxyAIMatches,
-    galaxyAIMatchedIds,
-    galaxyAIIntent,
+    ollamaAIMatches,
+    ollamaAIMatchedIds,
+    ollamaAIIntent,
+    // 互換性エイリアス
+    galaxyAIMatches: ollamaAIMatches,
+    galaxyAIMatchedIds: ollamaAIMatchedIds,
+    galaxyAIIntent: ollamaAIIntent,
     predictionSource,
     fetchSuggestions,
     queueQuery,

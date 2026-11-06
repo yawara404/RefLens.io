@@ -255,7 +255,7 @@ async def visual_search_endpoint(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Galaxy AI風 視覚画像検索（かこって検索）"""
+    """Ollama AI 視覚画像検索"""
     from app.services.visual_search import execute_visual_search
     import base64
 
