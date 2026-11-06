@@ -110,7 +110,7 @@ onMounted(init)
         />
 
         <!-- キャンバス左上: ブックマーク開閉 + ボード情報・キャンバス内検索バー -->
-        <div class="absolute top-3 left-3 z-20 flex items-center gap-1.5 pointer-events-none max-w-[calc(100%-8.5rem)] whitespace-nowrap">
+        <div class="absolute top-3 left-3 z-20 flex items-center gap-1.5 pointer-events-none max-w-[calc(100%-12rem)] whitespace-nowrap">
           <!-- ブックマークブラウザが閉じているとき、左上からも1クリックで開けるボタン -->
           <button
             v-if="!boardStore.isBrowserOpen"

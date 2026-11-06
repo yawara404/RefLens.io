@@ -1026,7 +1026,7 @@ watch(() => props.boardId, () => {
     <!-- 選択中アイテムの固定操作バー（回転やズームに影響されず常に押しやすい画面上部バー） -->
     <div
       v-if="boardStore.selectedItems.length > 0"
-      class="absolute top-14 md:top-3 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-1rem)] z-20 pointer-events-auto overflow-x-auto no-scrollbar animate-fade-in whitespace-nowrap"
+      class="absolute top-16 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-1.5rem)] z-20 pointer-events-auto overflow-x-auto no-scrollbar animate-fade-in whitespace-nowrap"
       @pointerdown.stop
     >
       <div class="floating-bar px-2 py-1.5 rounded-2xl flex items-center gap-1 shadow-pop whitespace-nowrap">
@@ -1042,7 +1042,6 @@ watch(() => props.boardId, () => {
             :model-value="boardStore.selectedItems.length === 1 ? (boardStore.activeItem?.media?.folder_name || 'All References') : 'All References'"
             :placeholder="boardStore.selectedItems.length === 1 ? undefined : 'フォルダへ一括保存'"
             compact
-            align="top"
             @change="(name) => boardStore.saveCanvasItemsToFolder(boardStore.selectedItemIds, name)"
           />
         </div>
@@ -1286,11 +1285,11 @@ watch(() => props.boardId, () => {
       <ColorPaletteBar :palette="activePalette" :title="boardStore.activeItem?.caption" />
     </div>
 
-    <!-- ズーム操作 / ホイールモード（モバイルでは右上に配置して下部ツールバーとの重なりを防ぐ） -->
-    <div class="absolute top-3 right-3 md:top-auto md:bottom-6 md:right-6 flex items-center gap-2 z-10 select-none" role="group" aria-label="ズームとスクロール操作">
+    <!-- ズーム操作 / ホイールモード（右上配置にして下部メインドックとの重なりを防止） -->
+    <div class="absolute top-3 right-3 flex items-center gap-2 z-10 select-none" role="group" aria-label="ズームとスクロール操作">
       <button
         type="button"
-        class="hidden md:inline-flex floating-bar px-2.5 py-1 rounded-full text-xs font-mono text-ink-muted hover:text-ink transition-colors"
+        class="hidden sm:inline-flex floating-bar px-2.5 py-1 rounded-full text-xs font-mono text-ink-muted hover:text-ink transition-colors"
         :title="wheelMode === 'scroll' ? 'ホイール/トラックパッド: パン。クリックでズームに切替' : 'ホイール: ズーム。クリックでパンに切替'"
         :aria-label="`ホイールモード切り替え（現在: ${wheelMode === 'scroll' ? 'パン' : 'ズーム'}）`"
         :aria-pressed="wheelMode === 'zoom'"
