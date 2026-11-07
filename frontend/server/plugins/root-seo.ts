@@ -88,7 +88,6 @@ export default defineNitroPlugin((nitroApp) => {
       event.node.res.setHeader('Content-Type', 'text/plain; charset=utf-8')
       event.node.res.setHeader('Cache-Control', 'public, max-age=14400')
       event.node.res.end(ROBOTS_TXT)
-      event.handled = true
     }
     // ホスト直下の /sitemap.xml
     else if (url === '/sitemap.xml') {
@@ -96,7 +95,6 @@ export default defineNitroPlugin((nitroApp) => {
       event.node.res.setHeader('Content-Type', 'application/xml; charset=utf-8')
       event.node.res.setHeader('Cache-Control', 'public, max-age=14400')
       event.node.res.end(SITEMAP_XML)
-      event.handled = true
     }
   })
 })

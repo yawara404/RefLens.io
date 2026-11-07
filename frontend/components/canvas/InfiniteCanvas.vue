@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { fitDragPreview } from '~/utils/dragPreview'
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import {
   Bookmark,
@@ -103,17 +104,14 @@ const draggedItemCount = computed(() => {
   return 1
 })
 
-const floatingCardWidth = computed(() => {
-  if (!draggingItem.value) return 220
-  const rawW = draggingItem.value.width * zoom.value
-  return Math.round(Math.max(130, Math.min(360, rawW)))
-})
-
-const floatingCardHeight = computed(() => {
-  if (!draggingItem.value) return 220
-  const ratio = (draggingItem.value.width / draggingItem.value.height) || 1
-  return Math.round(floatingCardWidth.value / ratio)
-})
+const floatingCardSize = computed(() => fitDragPreview(
+  (draggingItem.value?.width || 220) * zoom.value,
+  (draggingItem.value?.height || 220) * zoom.value,
+  220,
+  260,
+))
+const floatingCardWidth = computed(() => floatingCardSize.value.width)
+const floatingCardHeight = computed(() => floatingCardSize.value.height)
 
 const resizingItem = ref<CanvasItem | null>(null)
 const resizeDirection = ref<string>('')
@@ -154,9 +152,31 @@ function triggerAutoSave() {
   syncViewportCenter()
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   autoSaveTimer = setTimeout(() => {
+    autoSaveTimer = null
     boardStore.saveCanvas(panX.value, panY.value, zoom.value)
   }, 900)
 }
+
+async function flushAutoSave() {
+  if (boardStore.currentBoard?.id !== props.boardId) return true
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+  } else if (!boardStore.hasUnsavedChanges && !boardStore.isSaving) return true
+  return boardStore.saveCanvas(panX.value, panY.value, zoom.value)
+}
+
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (boardStore.hasUnsavedChanges || boardStore.isSaving) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
+
+// 履歴・ツールバーなど、キャンバス外からの編集も自動保存する。
+watch(() => boardStore.history[boardStore.historyIndex], () => {
+  if (boardStore.hasUnsavedChanges) triggerAutoSave()
+})
 
 // ---------------------------------------------------------------
 // ホイール（パン / ズーム）
@@ -522,12 +542,12 @@ function handleStartDrag(evt: PointerEvent, item: CanvasItem) {
   // スクリーン上のカード位置を算出してオフセットを保持
   const itemScreenPos = worldToScreen(item.pos_x, item.pos_y, rect)
   dragGrabOffset = {
-    x: evt.clientX - itemScreenPos.x,
-    y: evt.clientY - itemScreenPos.y,
+    x: Math.max(0, Math.min(1, (evt.clientX - itemScreenPos.x) / (item.width * zoom.value || 1))) * floatingCardWidth.value,
+    y: Math.max(0, Math.min(1, (evt.clientY - itemScreenPos.y) / (item.height * zoom.value || 1))) * floatingCardHeight.value,
   }
   floatingCardScreenPos.value = {
-    x: itemScreenPos.x,
-    y: itemScreenPos.y,
+    x: evt.clientX - dragGrabOffset.x,
+    y: evt.clientY - dragGrabOffset.y,
   }
   hoverTargetFolder.value = null
   boardStore.isCanvasDraggingToBrowser = false
@@ -573,7 +593,8 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 function onKeyDown(e: KeyboardEvent) {
-  if (isTypingTarget(e.target)) return
+  if (e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"]') || isTypingTarget(e.target)) return
+  if ((e.key === ' ' || e.key === 'Enter') && (e.target as HTMLElement)?.closest('button, a, [role="button"]')) return
 
   const mod = e.metaKey || e.ctrlKey
 
@@ -774,7 +795,7 @@ async function onDrop(e: DragEvent) {
 
 async function onPaste(e: ClipboardEvent) {
   if (!e.clipboardData || !containerRef.value) return
-  if (isTypingTarget(e.target)) return
+  if (e.defaultPrevented || document.querySelector('[aria-modal="true"]') || isTypingTarget(e.target)) return
 
   const files = extractImagesFromDataTransfer(e.clipboardData)
   if (files.length) {
@@ -869,7 +890,7 @@ function isItemBeingDragged(itemId: string): boolean {
   return boardStore.selectedItemIds.includes(itemId)
 }
 
-defineExpose({ fitView, resetView, focusItem })
+defineExpose({ fitView, resetView, focusItem, flushAutoSave })
 
 // ---------------------------------------------------------------
 // Lifecycle
@@ -886,6 +907,7 @@ onMounted(() => {
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
   window.addEventListener('blur', onWindowBlur)
+  window.addEventListener('beforeunload', onBeforeUnload)
 
   // 初期ロード後に自動で全体表示
   initialFitTimer = setTimeout(() => {
@@ -902,6 +924,7 @@ onUnmounted(() => {
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('pointercancel', onPointerUp)
   window.removeEventListener('blur', onWindowBlur)
+  window.removeEventListener('beforeunload', onBeforeUnload)
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   if (initialFitTimer) clearTimeout(initialFitTimer)
 })

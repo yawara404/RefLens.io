@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { setReferenceDragPreview } from '~/utils/dragPreview'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
   Bookmark,
@@ -129,8 +130,8 @@ function getFolderPreviewThumbs(folder: FolderItem): string[] {
     .filter(Boolean)
 }
 
-function formatFolderLabel(name: string): string {
-  return name === 'All References' ? 'すべての資料' : name
+function formatFolderLabel(name?: string): string {
+  return !name || name === 'All References' ? 'すべての資料' : name
 }
 
 function selectFolderAndOpenLibrary(folderName: string) {
@@ -265,9 +266,7 @@ function onDragStart(e: DragEvent, item: BookmarkItem) {
   e.dataTransfer.setData('application/reflens-bookmark-id', item.id)
   e.dataTransfer.setData('text/plain', item.title)
 
-  const ghost = new Image()
-  ghost.src = resolveImageUrl(item.file_path)
-  e.dataTransfer.setDragImage(ghost, 20, 20)
+  setReferenceDragPreview(e)
 }
 
 function onFolderBookmarkDragOver(folder: FolderItem, e: DragEvent) {

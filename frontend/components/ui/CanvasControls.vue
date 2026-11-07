@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import {
   Bookmark,
   Upload,
@@ -51,20 +51,8 @@ const openMenu = ref(false)
 const isAddModalOpen = ref(false)
 const directUrl = ref('')
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    openMenu.value = false
-    isAddModalOpen.value = false
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', onKeydown)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeydown)
-})
+const { dialogRef: addDialogRef } = useDialogA11y(isAddModalOpen, () => { isAddModalOpen.value = false })
+const { dialogRef: settingsDialogRef } = useDialogA11y(openMenu, () => { openMenu.value = false })
 
 const ARRANGE_OPTIONS = [
   { id: 'grid', label: 'グリッド整列', hint: '等間隔のグリッドに並べる' },
@@ -263,7 +251,7 @@ function setTheme(theme: string) {
     >
       <div
         class="w-full max-w-md rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
-        role="dialog"
+        ref="addDialogRef" role="dialog"
         aria-modal="true"
         aria-label="キャンバスに資料を追加"
       >
@@ -379,7 +367,7 @@ function setTheme(theme: string) {
     >
       <div
         class="w-full max-w-sm rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
-        role="dialog"
+        ref="settingsDialogRef" role="dialog"
         aria-modal="true"
         aria-label="キャンバスの整列・表示設定"
       >

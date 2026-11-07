@@ -25,11 +25,7 @@ function toggleMenu() {
   isMenuOpen.value = !isMenuOpen.value
 }
 
-function onKeyDown(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  if (isMenuOpen.value) closeMenu()
-  else if (isDialogOpen.value) isDialogOpen.value = false
-}
+const { dialogRef } = useDialogA11y(isMenuOpen, closeMenu)
 
 /** `reflens:auth-switch` で開く、アカウント切り替え用ダイアログ */
 function openAccountSwitcher() {
@@ -48,12 +44,10 @@ function handleLogout() {
 watch(() => route.fullPath, closeMenu)
 
 onMounted(() => {
-  window.addEventListener('keydown', onKeyDown)
   window.addEventListener('reflens:auth-switch', openAccountSwitcher)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('reflens:auth-switch', openAccountSwitcher)
 })
 </script>
@@ -127,7 +121,7 @@ onUnmounted(() => {
         >
           <div
             class="w-full max-w-xs rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
-            role="dialog"
+            ref="dialogRef" role="dialog"
             aria-modal="true"
             aria-label="アカウントメニュー"
           >

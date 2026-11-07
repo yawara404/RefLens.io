@@ -34,15 +34,16 @@ export function useImageProcessor() {
     if (dataTransfer.items) {
       for (let i = 0; i < dataTransfer.items.length; i++) {
         const item = dataTransfer.items[i]
-        if (item.type.indexOf('image') !== -1) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
           const file = item.getAsFile()
           if (file) files.push(file)
         }
       }
-    } else if (dataTransfer.files) {
+    }
+    if (!files.length && dataTransfer.files) {
       for (let i = 0; i < dataTransfer.files.length; i++) {
         const file = dataTransfer.files[i]
-        if (file.type.indexOf('image') !== -1) {
+        if (file.type.startsWith('image/')) {
           files.push(file)
         }
       }
@@ -51,14 +52,40 @@ export function useImageProcessor() {
   }
 
   /**
-   * 画像URLをクリップボードにコピー
+   * テキストをクリップボードにコピー
+   *
+   * navigator.clipboard は https 以外や権限が無い環境で失敗するため、
+   * 選択範囲 + execCommand のフォールバックも試す。
    */
   async function copyToClipboard(text: string): Promise<boolean> {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text)
+        return true
+      } catch {
+        /* フォールバックへ */
+      }
+    }
+
+    if (typeof document === 'undefined') return false
+    const previousFocus = document.activeElement as HTMLElement | null
+    const textarea = document.createElement('textarea')
     try {
-      await navigator.clipboard.writeText(text)
-      return true
+      textarea.value = text
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.top = '-1000px'
+      textarea.style.opacity = '0'
+      // フォーカストラップがあるモーダル内でもコピーできるようにする。
+      const host = previousFocus?.closest('[aria-modal="true"]') || document.body
+      host.appendChild(textarea)
+      textarea.select()
+      return document.execCommand('copy')
     } catch {
       return false
+    } finally {
+      textarea.remove()
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true })
     }
   }
 

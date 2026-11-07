@@ -4,6 +4,8 @@ import { useToast } from '~/composables/useToast'
 import { useBackendUrl } from '~/composables/useBackendUrl'
 
 const HISTORY_LIMIT = 30
+// 同一ストアの保存を直列化し、遅い古いリクエストによる上書きを防ぐ。
+const canvasSaveQueues = new WeakMap<object, Promise<boolean>>()
 
 export const useBoardStore = defineStore('board', {
   state: () => ({
@@ -14,6 +16,7 @@ export const useBoardStore = defineStore('board', {
     searchPredictedTags: [] as string[],
     isSaving: false,
     isLoading: false,
+    boardRequestSeq: 0,
     hasUnsavedChanges: false,
     history: [] as string[],
     historyIndex: -1,
@@ -155,21 +158,26 @@ export const useBoardStore = defineStore('board', {
     // -------------------------------------------------------------
     // ボード
     // -------------------------------------------------------------
-    async loadBoard(boardId: string) {
+    async loadBoard(boardId: string): Promise<Board | null> {
+      const requestSeq = ++this.boardRequestSeq
       this.isLoading = true
       try {
         const res = await $fetch<Board>(this.api(`/boards/${boardId}`))
+        if (requestSeq !== this.boardRequestSeq) return null
         this.currentBoard = res
         this.items = res.items || []
         this.selectedItemIds = []
         this.history = [JSON.stringify(this.items)]
         this.historyIndex = 0
         this.hasUnsavedChanges = false
+        return res
       } catch (e) {
+        if (requestSeq !== this.boardRequestSeq) return null
         console.error('Failed to load board:', e)
         useToast().error('ボードを読み込めませんでした', 'バックエンドの接続を確認してください')
+        return null
       } finally {
-        this.isLoading = false
+        if (requestSeq === this.boardRequestSeq) this.isLoading = false
       }
     },
 
@@ -178,50 +186,67 @@ export const useBoardStore = defineStore('board', {
       try {
         const boards = await $fetch<{ id: string }[]>(this.api('/boards/'))
         if (!boards?.length) return null
-        await this.loadBoard(boards[0].id)
-        return this.currentBoard
+        return await this.loadBoard(boards[0].id)
       } catch (e) {
         console.error('Failed to load first board:', e)
         return null
       }
     },
 
-    async saveCanvas(viewportX: number, viewportY: number, viewportZoom: number) {
-      if (!this.currentBoard) return
+    async saveCanvas(viewportX: number, viewportY: number, viewportZoom: number): Promise<boolean> {
+      if (!this.currentBoard) return false
+      const boardId = this.currentBoard.id
+      const snapshotJson = JSON.stringify(this.items)
+      const snapshot: CanvasItem[] = JSON.parse(snapshotJson)
+      const body = {
+        viewport_x: viewportX,
+        viewport_y: viewportY,
+        viewport_zoom: viewportZoom,
+        items: snapshot.map(it => ({
+          id: it.id,
+          pos_x: it.pos_x,
+          pos_y: it.pos_y,
+          width: it.width,
+          height: it.height,
+          rotation: it.rotation,
+          z_index: it.z_index,
+          is_flipped_h: it.is_flipped_h,
+          is_flipped_v: it.is_flipped_v,
+          is_grayscale: it.is_grayscale,
+          opacity: it.opacity,
+          border_color: it.border_color,
+          border_width: it.border_width,
+          is_locked: it.is_locked,
+          caption: it.caption,
+        })),
+      }
       this.isSaving = true
-
+      const previous = canvasSaveQueues.get(this) || Promise.resolve(true)
+      const save = previous.then(async () => {
+        // ボードを切り替えた後は、待機していた保存を送らない。
+        if (this.currentBoard?.id !== boardId) return false
+        try {
+          await $fetch(this.api(`/boards/${boardId}/items/batch`), { method: 'POST', body })
+          if (this.currentBoard?.id === boardId && JSON.stringify(this.items) === snapshotJson) {
+            this.hasUnsavedChanges = false
+          }
+          return true
+        } catch (e: any) {
+          if (this.currentBoard?.id === boardId) {
+            this.hasUnsavedChanges = true
+            useToast().error('保存に失敗しました', e?.data?.detail || e?.message)
+          }
+          return false
+        }
+      })
+      canvasSaveQueues.set(this, save)
       try {
-        await $fetch(this.api(`/boards/${this.currentBoard.id}/items/batch`), {
-          method: 'POST',
-          body: {
-            viewport_x: viewportX,
-            viewport_y: viewportY,
-            viewport_zoom: viewportZoom,
-            items: this.items.map(it => ({
-              id: it.id,
-              pos_x: it.pos_x,
-              pos_y: it.pos_y,
-              width: it.width,
-              height: it.height,
-              rotation: it.rotation,
-              z_index: it.z_index,
-              is_flipped_h: it.is_flipped_h,
-              is_flipped_v: it.is_flipped_v,
-              is_grayscale: it.is_grayscale,
-              opacity: it.opacity,
-              border_color: it.border_color,
-              border_width: it.border_width,
-              is_locked: it.is_locked,
-              caption: it.caption,
-            })),
-          },
-        })
-        this.hasUnsavedChanges = false
-      } catch (e) {
-        console.error('Failed to save canvas:', e)
-        useToast().error('保存に失敗しました', (e as any)?.data?.detail || (e as any)?.message)
+        return await save
       } finally {
-        this.isSaving = false
+        if (canvasSaveQueues.get(this) === save) {
+          canvasSaveQueues.delete(this)
+          this.isSaving = false
+        }
       }
     },
 
@@ -423,6 +448,7 @@ export const useBoardStore = defineStore('board', {
           this.items.push(res.item)
           this.selectedItemIds = [res.item.id]
           this.recordHistory()
+          return res.item
         }
       } catch (e: any) {
         useToast().error('キャンバスへの配置に失敗しました', (e as any)?.data?.detail || (e as any)?.message)

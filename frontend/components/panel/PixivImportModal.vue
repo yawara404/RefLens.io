@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, toRef } from 'vue'
 import {
   X,
   Compass,
@@ -17,6 +17,8 @@ import { usePixiv } from '~/composables/usePixiv'
 import PixivImage from '~/components/ui/PixivImage.vue'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import { useToast } from '~/composables/useToast'
+import { useImageProcessor } from '~/composables/useImageProcessor'
+import { useDialogA11y } from '~/composables/useDialogA11y'
 
 const props = defineProps<{
   isOpen: boolean
@@ -31,6 +33,10 @@ const emit = defineEmits<{
 const boardStore = useBoardStore()
 const pixiv = usePixiv()
 const toast = useToast()
+const { copyToClipboard } = useImageProcessor()
+
+// Esc で閉じる / 背景スクロールを止める
+const { dialogRef } = useDialogA11y(toRef(props, 'isOpen'), () => emit('close'))
 
 const searchInput = ref('')
 const selectedIds = ref<string[]>([])
@@ -109,8 +115,11 @@ async function handleImport(placeOnCanvas: boolean) {
 }
 
 function copyId(id: string) {
-  navigator.clipboard.writeText(`https://www.pixiv.net/artworks/${id}`)
-  toast.success('作品URLをコピーしました')
+  const url = `https://www.pixiv.net/artworks/${id}`
+  void copyToClipboard(url).then((ok) => {
+    if (ok) toast.success('作品URLをコピーしました')
+    else toast.error('コピーできませんでした', url)
+  })
 }
 
 watch(() => props.isOpen, (open) => {
@@ -131,7 +140,7 @@ onMounted(() => {
     >
       <div
         class="w-full max-w-5xl max-h-[90dvh] sm:max-h-[85vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col overflow-hidden animate-scale-in"
-        role="dialog"
+        ref="dialogRef" role="dialog"
         aria-modal="true"
         aria-label="pixivから取り込む"
       >

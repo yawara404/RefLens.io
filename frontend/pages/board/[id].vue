@@ -3,6 +3,9 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Bookmark,
+  Check,
+  Loader2,
+  RefreshCw,
   Edit2,
   Folder,
   Search,
@@ -40,6 +43,8 @@ const isPixivModalOpen = ref(false)
 const isInstagramModalOpen = ref(false)
 const isSaveModalOpen = ref(false)
 const editableTitle = ref('')
+const boardReady = ref(false)
+const loadError = ref(false)
 
 function requireAuth(actionLabel = 'この操作'): boolean {
   if (!auth.isAuthenticated) {
@@ -56,14 +61,18 @@ function handleOpenSaveModal() {
 }
 
 async function init() {
-  await Promise.all([
-    boardStore.loadBoard(boardId.value),
+  const requestedId = boardId.value
+  boardReady.value = false
+  loadError.value = false
+  const [board] = await Promise.all([
+    boardStore.loadBoard(requestedId),
     !boardStore.hasLoadedBookmarks ? boardStore.fetchBookmarks() : Promise.resolve(),
     !boardStore.folders.length ? boardStore.fetchFolders() : Promise.resolve(),
   ])
-  if (boardStore.currentBoard) {
-    editableTitle.value = boardStore.currentBoard.title
-  }
+  if (boardId.value !== requestedId) return
+  boardReady.value = !!board && board.id === requestedId
+  loadError.value = !boardReady.value
+  if (board) editableTitle.value = board.title
 }
 
 function handleOpenInsight(item?: CanvasItem | null) {
@@ -100,6 +109,15 @@ function handleFitView() {
   canvasRef.value?.fitView()
 }
 
+const { dialogRef: searchDialogRef } = useDialogA11y(isSearchModalOpen, () => { isSearchModalOpen.value = false })
+
+onBeforeRouteLeave(async () => {
+  // 自動保存の待ち時間中にページ移動しても編集を失わない。
+  return await canvasRef.value?.flushAutoSave() !== false
+})
+
+onBeforeRouteUpdate(async () => await canvasRef.value?.flushAutoSave() !== false)
+watch(boardId, init)
 onMounted(init)
 </script>
 
@@ -122,14 +140,31 @@ onMounted(init)
 
       <div data-canvas-pane class="relative flex-1 min-w-0 h-full overflow-hidden" style="container-type: inline-size; container-name: canvas-pane">
         <InfiniteCanvas
+          v-if="boardReady"
           ref="canvasRef"
           :board-id="boardId"
           @open-insight="handleOpenInsight"
           @open-pixiv="isPixivModalOpen = true"
         />
 
+        <div v-if="!boardReady" class="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center" role="status" aria-live="polite">
+          <Loader2 v-if="!loadError" class="w-6 h-6 text-brand animate-spin" aria-hidden="true" />
+          <p class="text-sm font-semibold">{{ loadError ? 'キャンバスを読み込めませんでした' : 'キャンバスを読み込んでいます…' }}</p>
+          <p v-if="loadError" class="text-xs text-ink-muted">接続と、このボードへのアクセス権を確認してください。</p>
+          <button v-if="loadError" type="button" class="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-xs font-bold text-brand-fg hover:bg-brand-hover" @click="init">
+            <RefreshCw class="w-3.5 h-3.5" aria-hidden="true" />再試行
+          </button>
+          <NuxtLink v-if="loadError" to="/" class="text-xs text-brand underline underline-offset-4">資料ライブラリに戻る</NuxtLink>
+        </div>
+        <div v-if="boardReady && auth.isAuthenticated" class="absolute bottom-32 right-3 z-20 floating-bar rounded-xl px-2.5 py-1.5 text-[11px] text-ink-muted flex items-center gap-1.5" role="status" aria-live="polite" aria-atomic="true">
+          <Loader2 v-if="boardStore.isSaving" class="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+          <Check v-else-if="!boardStore.hasUnsavedChanges" class="w-3.5 h-3.5 text-ok" aria-hidden="true" />
+          <span>{{ boardStore.isSaving ? '保存中…' : boardStore.hasUnsavedChanges ? '未保存の変更' : '保存済み' }}</span>
+          <button v-if="boardStore.hasUnsavedChanges && !boardStore.isSaving" type="button" class="text-brand font-semibold underline underline-offset-2" @click="canvasRef?.flushAutoSave()">保存</button>
+        </div>
+
         <!-- キャンバス左上: ブックマーク開閉 + ボード情報・キャンバス内検索バー -->
-        <div class="absolute top-3 left-3 z-20 flex items-center gap-1.5 pointer-events-none max-w-[calc(100%-12rem)] whitespace-nowrap">
+        <div v-if="boardReady" class="absolute top-3 left-3 z-20 flex items-center gap-1.5 pointer-events-none max-w-[calc(100%-12rem)] whitespace-nowrap">
           <!-- ブックマークブラウザが閉じているとき、左上からも1クリックで開けるボタン -->
           <button
             v-if="!boardStore.isBrowserOpen"
@@ -198,7 +233,7 @@ onMounted(init)
         </div>
 
         <!-- 下部メインドック（w-max を指定してボタン文字の縦折り返しを完全防止） -->
-        <div class="absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-1rem)] sm:max-w-[calc(100%-2rem)] z-20 pointer-events-auto pb-safe">
+        <div v-if="boardReady" class="absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-1rem)] sm:max-w-[calc(100%-2rem)] z-20 pointer-events-auto pb-safe">
           <CanvasControls
             :board-id="boardId"
             @fit-view="handleFitView"
@@ -220,7 +255,7 @@ onMounted(init)
         >
           <div
             class="w-full max-w-md rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
-            role="dialog"
+            ref="searchDialogRef" role="dialog"
             aria-modal="true"
             aria-label="キャンバス検索・ボード設定"
           >

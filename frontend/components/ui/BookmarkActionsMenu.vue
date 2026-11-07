@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch, nextTick, computed } from 'vue'
+import { ref, nextTick, computed } from 'vue'
 import { ExternalLink, FolderInput, Layers, MoreHorizontal, Trash2, X, Check, ArrowLeft, Plus, Tag, Sparkles } from 'lucide-vue-next'
 import type { BookmarkItem, FolderItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
@@ -33,21 +33,7 @@ function close() {
   newTagInput.value = ''
 }
 
-function onEscape(event: KeyboardEvent) {
-  if (event.key === 'Escape') close()
-}
-
-watch(open, value => {
-  if (value) {
-    document.addEventListener('keydown', onEscape)
-  } else {
-    document.removeEventListener('keydown', onEscape)
-  }
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onEscape)
-})
+const { dialogRef } = useDialogA11y(open, close)
 
 function formatFolderLabel(name?: string): string {
   if (!name || name === 'All References') return 'すべての資料'
@@ -122,7 +108,7 @@ async function triggerAi() {
       >
         <div
           class="w-full max-w-sm rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
-          role="dialog"
+          ref="dialogRef" role="dialog"
           aria-modal="true"
           :aria-label="`${item.title}の操作`"
           @click.stop

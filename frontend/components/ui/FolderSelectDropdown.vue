@@ -129,6 +129,8 @@ function handleClickOutside(event: MouseEvent) {
 
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Escape' && isOpen.value) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
     isOpen.value = false
   }
 }
@@ -150,6 +152,7 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="inline-block text-left"
+    @keydown="handleKeyDown"
     :class="isOpen ? 'relative z-[85]' : 'relative'"
   >
     <!-- トリガーボタン -->

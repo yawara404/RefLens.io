@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, toRef } from 'vue'
 import { X, Instagram, Check, Download, RefreshCw, LogIn } from 'lucide-vue-next'
 import type { InstagramMediaPost } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
 import { useBackendUrl } from '~/composables/useBackendUrl'
 import { useToast } from '~/composables/useToast'
+import { useDialogA11y } from '~/composables/useDialogA11y'
 
 const props = defineProps<{
   isOpen: boolean
@@ -19,6 +20,9 @@ const emit = defineEmits<{
 const { apiBase } = useBackendUrl()
 const boardStore = useBoardStore()
 const toast = useToast()
+
+// Esc で閉じる / 背景スクロールを止める
+const { dialogRef } = useDialogA11y(toRef(props, 'isOpen'), () => emit('close'))
 
 const isLoading = ref(false)
 const isImporting = ref(false)
@@ -107,7 +111,7 @@ onMounted(() => {
     >
       <div
         class="w-full max-w-3xl max-h-[90dvh] sm:max-h-[85vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col overflow-hidden animate-scale-in"
-        role="dialog"
+        ref="dialogRef" role="dialog"
         aria-modal="true"
         aria-label="Instagramから取り込む"
       >

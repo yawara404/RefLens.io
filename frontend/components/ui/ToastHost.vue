@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { Check, Info, AlertTriangle, XCircle, X } from 'lucide-vue-next'
 import { useToast, type ToastKind } from '~/composables/useToast'
 
-const { toasts, dismiss } = useToast()
+const { toasts, dismiss, pause, resume } = useToast()
 
 const ICONS: Record<ToastKind, any> = {
   info: Info,
@@ -24,7 +24,7 @@ const hasToasts = computed(() => toasts.value.length > 0)
 
 <template>
   <div
-    class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-2 pointer-events-none w-full max-w-md px-4"
+    class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] flex flex-col items-center gap-2 pointer-events-none w-full max-w-md px-4"
     role="status"
     aria-live="polite"
   >
@@ -39,8 +39,10 @@ const hasToasts = computed(() => toasts.value.length > 0)
         :key="toast.id"
         class="pointer-events-auto w-full flex items-start gap-2.5 rounded-xl border px-3.5 py-2.5 shadow-pop"
         :class="CLASSES[toast.kind]"
+        @mouseenter="pause(toast.id)"
+        @mouseleave="resume(toast.id)"
       >
-        <component :is="ICONS[toast.kind]" class="w-4 h-4 shrink-0 mt-px" />
+        <component :is="ICONS[toast.kind]" class="w-4 h-4 shrink-0 mt-px" :aria-hidden="true" />
         <div class="flex-1 min-w-0">
           <p class="text-xs font-semibold leading-snug break-words">{{ toast.message }}</p>
           <p
@@ -52,7 +54,7 @@ const hasToasts = computed(() => toasts.value.length > 0)
         </div>
         <button
           class="shrink-0 p-0.5 rounded opacity-60 hover:opacity-100 transition-opacity"
-          :aria-label="'閉じる'"
+          aria-label="通知を閉じる"
           @click="dismiss(toast.id)"
         >
           <X class="w-3.5 h-3.5" />

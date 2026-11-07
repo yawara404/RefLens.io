@@ -109,3 +109,13 @@ bun run preview
 ```
 
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+
+## 品質チェック
+
+```sh
+npm test
+npm run typecheck
+npm run build
+```
+
+`npm test` は保存中の追加編集・保存の順序・通信失敗後の再試行・ボード読み込みの競合・画像とコピー処理・モーダルのフォーカス管理を検証します。ブラウザでの表示確認は別途必要です。ビルド前に同じディレクトリの開発サーバーを停止してください。

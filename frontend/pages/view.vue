@@ -39,6 +39,7 @@ import { useAuthStore } from '~/stores/authStore'
 import { usePixiv, type PixivArtwork } from '~/composables/usePixiv'
 import { useBackendUrl } from '~/composables/useBackendUrl'
 import { useMediaUrl } from '~/composables/useMediaUrl'
+import { useImageProcessor } from '~/composables/useImageProcessor'
 import { useToast } from '~/composables/useToast'
 import { useMobileNav } from '~/composables/useMobileNav'
 import { useSearchSuggest } from '~/composables/useSearchSuggest'
@@ -58,6 +59,7 @@ function requireAuth(actionLabel = 'この操作'): boolean {
 }
 const { apiBase } = useBackendUrl()
 const { resolveMediaUrl } = useMediaUrl()
+const { copyToClipboard } = useImageProcessor()
 const { isOpen: isSidebarOpen } = useMobileNav()
 
 const searchInput = ref('')
@@ -208,6 +210,15 @@ function submitSearch() {
   activeCategory.value = 'search'
   pixiv.setQuery(searchInput.value)
   pixiv.loadFeed('search', 1)
+  scrollResultsToTop()
+}
+
+/** 結果が切り替わったのにスクロール位置が下のままだと「何も出ない」と誤解するため先頭へ戻す */
+function scrollResultsToTop() {
+  const el = viewMainRef.value
+  if (!el) return
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' })
 }
 
 function pickCategory(id: string) {
@@ -218,10 +229,12 @@ function pickCategory(id: string) {
   pixiv.clearSelection()
   if (id === 'saved') {
     boardStore.fetchBookmarks()
+    scrollResultsToTop()
   } else if (id === 'search') {
     submitSearch()
   } else {
     pixiv.loadFeed(id, 1)
+    scrollResultsToTop()
   }
   // モバイルではハンバーガーメニューを閉じて結果を全面表示させる
   if (window.matchMedia('(max-width: 767px)').matches) isSidebarOpen.value = false
@@ -233,6 +246,7 @@ function applyFilters() {
   pixiv.sort.value = sortMode.value
   pixiv.duration.value = durationMode.value
   pixiv.loadFeed('search', 1)
+  scrollResultsToTop()
 }
 
 async function openDetail(item: PixivArtwork) {
@@ -386,6 +400,22 @@ async function placeActiveOnCanvas() {
   if (activeArtwork.value) await handlePlaceOnCanvas(activeArtwork.value)
 }
 
+async function placeSavedBookmark(item: BookmarkItem) {
+  if (!requireAuth('キャンバスへの配置') || isPlacing.value) return
+  isPlacing.value = true
+  try {
+    const boardId = await ensureBoardId()
+    if (!boardId) {
+      toast.error('キャンバスを読み込めませんでした', '時間をおいて再試行してください')
+      return
+    }
+    const placed = await boardStore.placeBookmarkOnBoard(item.id)
+    if (placed) await navigateTo(`/board/${boardId}`)
+  } finally {
+    isPlacing.value = false
+  }
+}
+
 async function handlePlaceOnCanvas(artwork?: PixivArtwork) {
   const ids = artwork ? [artwork.id] : [...pixiv.selectedIds.value]
   if (!ids.length) return
@@ -411,8 +441,11 @@ async function handlePlaceOnCanvas(artwork?: PixivArtwork) {
 }
 
 function copyUrl(id: string) {
-  navigator.clipboard.writeText(`https://www.pixiv.net/artworks/${id}`)
-  toast.success('作品URLをコピーしました')
+  const url = `https://www.pixiv.net/artworks/${id}`
+  void copyToClipboard(url).then((ok) => {
+    if (ok) toast.success('作品URLをコピーしました')
+    else toast.error('コピーできませんでした', url)
+  })
 }
 
 function formatCount(n: number) {
@@ -433,8 +466,16 @@ async function onAuthChanged() {
   }
 }
 
+const { dialogRef: detailDialogRef } = useDialogA11y(computed(() => !!activeArtwork.value), closeDetail)
+const { dialogRef: filterDialogRef } = useDialogA11y(isFilterModalOpen, () => { isFilterModalOpen.value = false })
+
 function onViewKeyDown(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.isComposing) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  if (isFilterModalOpen.value) return
   if (activeArtwork.value) {
+    if (!detailDialogRef.value?.contains(e.target as Node)) return
     if (e.key === 'Escape') {
       e.preventDefault()
       closeDetail()
@@ -850,7 +891,7 @@ onUnmounted(() => {
                 <BookmarkActionsMenu
                   :item="item"
                   :folders="boardStore.folders"
-                  @place="handlePlaceOnCanvas(item)"
+                  @place="placeSavedBookmark(item)"
                   @move="handleMoveBookmark(item, $event)"
                   @delete="handleDeleteBookmark(item)"
                 />
@@ -1104,7 +1145,7 @@ onUnmounted(() => {
       >
         <div
           class="w-full max-w-5xl max-h-[92dvh] sm:max-h-[90vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col md:flex-row overflow-hidden animate-scale-in"
-          role="dialog"
+          ref="detailDialogRef" role="dialog"
           aria-modal="true"
           :aria-label="activeArtwork.title"
         >
@@ -1300,7 +1341,7 @@ onUnmounted(() => {
       >
         <div
           class="w-full max-w-md max-h-[88dvh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop flex flex-col overflow-hidden animate-scale-in"
-          role="dialog"
+          ref="filterDialogRef" role="dialog"
           aria-modal="true"
           aria-label="pixiv 絞り込み・連携設定"
         >

@@ -17,6 +17,7 @@ import { useBoardStore } from '~/stores/boardStore'
 import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useImageProcessor } from '~/composables/useImageProcessor'
 import { useToast } from '~/composables/useToast'
+import { useDialogA11y } from '~/composables/useDialogA11y'
 
 const boardStore = useBoardStore()
 const toast = useToast()
@@ -24,6 +25,9 @@ const { resolveMediaUrl } = useMediaUrl()
 const { copyToClipboard } = useImageProcessor()
 
 const item = computed(() => boardStore.quickLookItem)
+
+// モーダル共通のキーボード操作とフォーカス管理。
+const { dialogRef } = useDialogA11y(computed(() => !!item.value), () => boardStore.closeQuickLook())
 const closeBtnRef = ref<HTMLButtonElement | null>(null)
 const copiedHex = ref<string | null>(null)
 let touchStartX = 0
@@ -96,17 +100,20 @@ async function copySourceUrl() {
 
 async function placeOnCanvas() {
   if (!boardStore.quickLookItem) return
+  const bookmarkId = boardStore.quickLookItem.id
   if (!boardStore.currentBoard) {
     await boardStore.loadFirstBoard()
   }
-  await boardStore.placeBookmarkOnBoard(boardStore.quickLookItem.id, 150, 150)
+  const placed = await boardStore.placeBookmarkOnBoard(bookmarkId, 150, 150)
+  if (!placed) return
   toast.success('キャンバスへ配置しました')
   boardStore.closeQuickLook()
 }
 
 async function removeFromLibrary() {
   if (!boardStore.quickLookItem) return
-  await boardStore.deleteBookmark(boardStore.quickLookItem.id)
+  const deleted = await boardStore.deleteBookmark(boardStore.quickLookItem.id)
+  if (!deleted) return
   toast.success('ライブラリから削除しました')
   boardStore.closeQuickLook()
 }
@@ -160,9 +167,11 @@ function isTypingTarget(target: EventTarget | null) {
 }
 
 function onKeyDown(e: KeyboardEvent) {
-  if (!boardStore.quickLookItem) return
+  if (e.defaultPrevented || e.isComposing || !boardStore.quickLookItem) return
+  if (!dialogRef.value?.contains(e.target as Node)) return
   if (isTypingTarget(e.target)) return
 
+  if ((e.key === ' ' || e.key === 'Enter') && (e.target as HTMLElement)?.closest('button, a, [role="button"]')) return
   if (e.key === 'Escape' || e.key === ' ') {
     e.preventDefault()
     boardStore.closeQuickLook()
@@ -201,7 +210,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
     >
       <div
         class="w-full max-w-4xl max-h-[92dvh] sm:max-h-[85vh] rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden flex flex-col md:flex-row animate-scale-in"
-        role="dialog"
+        ref="dialogRef" role="dialog"
         aria-modal="true"
         :aria-label="item.title"
       >

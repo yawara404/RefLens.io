@@ -22,6 +22,7 @@ useHead({
 
 // `?` / F1 でショートカット一覧を表示、`/` で検索欄へフォーカス（入力欄にフォーカス中は無効）
 function onGlobalKey(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"]')) return
   if (helpStore.isOpen) {
     // 開いている間は Esc で閉じるだけ
     return

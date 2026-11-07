@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { Check, MoreVertical, Palette, Pencil, Trash2, X } from 'lucide-vue-next'
 import type { FolderItem } from '~/types'
 
@@ -33,23 +33,14 @@ function close() {
   confirmDelete.value = false
 }
 
-function onEscape(event: KeyboardEvent) {
-  if (event.key === 'Escape') close()
-}
+const { dialogRef } = useDialogA11y(open, close)
 
 watch(open, value => {
   if (value) {
     draftName.value = props.folder.name
     draftColor.value = props.folder.color || '#6366f1'
     confirmDelete.value = false
-    document.addEventListener('keydown', onEscape)
-  } else {
-    document.removeEventListener('keydown', onEscape)
   }
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onEscape)
 })
 
 function submitRename() {
@@ -92,7 +83,7 @@ function selectColor(color: string) {
       >
         <div
           class="w-full max-w-sm rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
-          role="dialog"
+          ref="dialogRef" role="dialog"
           aria-modal="true"
           :aria-label="`${folder.name}の編集`"
           @click.stop

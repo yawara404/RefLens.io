@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import { UserPlus, LogIn, X, Sparkles } from 'lucide-vue-next'
 import { useAuthStore } from '~/stores/authStore'
+import { useDialogA11y } from '~/composables/useDialogA11y'
 import PixivLoginFlow from '~/components/ui/PixivLoginFlow.vue'
 
 const open = defineModel<boolean>({ default: false })
@@ -38,6 +39,9 @@ function close() {
   open.value = false
 }
 
+// Esc で閉じる / 背景スクロールを止める / 閉じたら元の要素へフォーカスを戻す
+const { dialogRef } = useDialogA11y(open, close)
+
 async function submit() {
   if (mode.value === 'pixiv') return
   if (!canSubmit.value || auth.isSubmitting) return
@@ -55,17 +59,6 @@ async function continueAsGuest() {
   await auth.loginAsGuest()
   open.value = false
 }
-
-function isTypingTarget(target: EventTarget | null) {
-  const el = target as HTMLElement | null
-  if (!el) return false
-  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.isContentEditable
-}
-
-function onKeyDown(e: KeyboardEvent) {
-  if (!open.value) return
-  if (e.key === 'Escape' && !isTypingTarget(e.target)) close()
-}
 </script>
 
 <template>
@@ -74,13 +67,13 @@ function onKeyDown(e: KeyboardEvent) {
       v-if="open"
       class="fixed inset-0 z-[100] scrim flex items-center justify-center p-4"
       @click.self="close"
-      @keydown="onKeyDown"
     >
       <form
         class="w-full max-w-sm rounded-2xl border border-canvas-border bg-canvas-panel p-6 shadow-pop space-y-4 overflow-y-auto max-h-[85vh]"
-        role="dialog"
+        ref="dialogRef" role="dialog"
         aria-modal="true"
         aria-labelledby="auth-dialog-title"
+        :aria-busy="auth.isSubmitting"
         @submit.prevent="submit"
       >
         <!-- ヘッダー -->
@@ -136,6 +129,8 @@ function onKeyDown(e: KeyboardEvent) {
               v-model="username"
               type="text"
               autocomplete="nickname"
+              required
+              maxlength="100"
               placeholder=" illustrator"
               class="w-full bg-canvas-card border border-canvas-border rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition-colors"
             >
@@ -150,6 +145,7 @@ function onKeyDown(e: KeyboardEvent) {
               v-model="email"
               type="email"
               autocomplete="email"
+              required
               placeholder="you@example.com"
               class="w-full bg-canvas-card border border-canvas-border rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition-colors font-mono text-xs"
             >
@@ -163,6 +159,8 @@ function onKeyDown(e: KeyboardEvent) {
               id="auth-password"
               v-model="password"
               type="password"
+              required
+              :minlength="isRegister ? 8 : undefined"
               :autocomplete="isRegister ? 'new-password' : 'current-password'"
               placeholder="8文字以上"
               class="w-full bg-canvas-card border border-canvas-border rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand transition-colors"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { setReferenceDragPreview } from '~/utils/dragPreview'
 import { ref, onMounted, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import {
   Home,
@@ -166,7 +167,19 @@ watch(searchQuery, (newVal) => {
 })
 const selectedSource = ref<'all' | 'pixiv' | 'instagram' | 'web_bookmark' | 'local_upload'>('all')
 const selectedFolder = ref<string | null>(null)
-const viewMode = ref<'grid' | 'list'>('grid')
+/** グリッド / リスト表示は再読み込みしても保つ（毎回グリッドに戻るストレスを無くす） */
+const VIEW_MODE_KEY = 'reflens-library-view-mode'
+
+function restoreViewMode(): 'grid' | 'list' {
+  if (typeof window === 'undefined') return 'grid'
+  try {
+    return window.localStorage.getItem(VIEW_MODE_KEY) === 'list' ? 'list' : 'grid'
+  } catch {
+    return 'grid'
+  }
+}
+
+const viewMode = ref<'grid' | 'list'>(restoreViewMode())
 
 const showNewFolder = ref(false)
 const newFolderName = ref('')
@@ -791,6 +804,15 @@ watch(folderSortOrder, () => {
   persistFolderSortOrder()
 })
 
+watch(viewMode, (mode) => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(VIEW_MODE_KEY, mode)
+  } catch {
+    /* localStorage が使えない環境ではその場の表示だけ切り替える */
+  }
+})
+
 function resetFolderDrag() {
   draggingFolder.value = null
   dragOverFolder.value = null
@@ -890,9 +912,7 @@ function onBookmarkDragStart(e: DragEvent, b: BookmarkItem) {
   if (b.file_path) {
     e.dataTransfer.setData('text/uri-list', resolveThumbnail(b.file_path))
   }
-  const ghost = new Image()
-  ghost.src = resolveThumbnail(b.file_path)
-  e.dataTransfer.setDragImage(ghost, 20, 20)
+  setReferenceDragPreview(e)
 }
 
 function onFolderBookmarkDragOver(folder: FolderItem, event: DragEvent) {

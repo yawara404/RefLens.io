@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref } from 'vue'
 import { Sun, Moon, Monitor, Check, X } from 'lucide-vue-next'
 import { useTheme, type ThemePreference } from '~/composables/useTheme'
 
@@ -20,17 +20,7 @@ function select(pref: ThemePreference) {
   isOpen.value = false
 }
 
-function onKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && isOpen.value) isOpen.value = false
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', onKeyDown)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', onKeyDown)
-})
+const { dialogRef } = useDialogA11y(isOpen, () => { isOpen.value = false })
 </script>
 
 <template>
@@ -56,7 +46,7 @@ onUnmounted(() => {
       >
         <div
           class="w-full max-w-xs rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop overflow-hidden animate-scale-in"
-          role="dialog"
+          ref="dialogRef" role="dialog"
           aria-modal="true"
           aria-label="テーマ設定"
         >

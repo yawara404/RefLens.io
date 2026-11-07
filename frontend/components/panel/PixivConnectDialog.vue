@@ -2,10 +2,13 @@
 import { useBackendUrl } from '~/composables/useBackendUrl'
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useAuthStore } from '~/stores/authStore'
+import { useToast } from '~/composables/useToast'
+import { useDialogA11y } from '~/composables/useDialogA11y'
 import PixivLoginFlow from '~/components/ui/PixivLoginFlow.vue'
 
 const { apiBase } = useBackendUrl()
 const auth = useAuthStore()
+const toast = useToast()
 const open = ref(false)
 /** 既定は「Pixivでログイン」（Palleria の Web Login 相当） */
 const usePixivLogin = ref(true)
@@ -14,6 +17,9 @@ const tokenConnectAvailable = ref(false)
 const token = ref('')
 const busy = ref(false)
 const error = ref('')
+
+// Esc で閉じる / 背景スクロールを止める
+const { dialogRef } = useDialogA11y(open, close)
 
 async function show() {
   token.value = ''
@@ -36,8 +42,24 @@ function close() {
   open.value = false
 }
 
-function finishPixivLogin() {
-  window.location.reload()
+/**
+ * 接続後の画面更新。
+ * 以前は window.location.reload() でページごと再読み込みしていたが、
+ * 入力中の状態まで失われるため、ユーザー情報と関連データだけを取り直す。
+ */
+async function refreshAfterConnect() {
+  try {
+    await auth.refreshUser()
+  } catch {
+    /* 表示名などが取れなくても接続自体は完了している */
+  }
+  open.value = false
+  window.dispatchEvent(new Event('reflens:auth-changed'))
+}
+
+async function finishPixivLogin() {
+  await refreshAfterConnect()
+  toast.success('Pixivに接続しました')
 }
 
 async function submit() {
@@ -50,7 +72,8 @@ async function submit() {
       body: { refresh_token: token.value.trim() },
     })
     token.value = ''
-    window.location.reload()
+    await refreshAfterConnect()
+    toast.success('Pixivに接続しました')
   } catch (e: any) {
     error.value = e?.data?.detail || '接続できませんでした。トークンと設定を確認してください。'
   } finally {
@@ -65,7 +88,7 @@ onUnmounted(() => window.removeEventListener('reflens:pixiv-connect', show))
 <template>
   <Teleport to="body">
     <div v-if="open" class="fixed inset-0 z-[100] scrim flex items-center justify-center p-4" @click.self="close">
-      <form class="w-full max-w-md rounded-2xl border border-canvas-border bg-canvas-panel p-6 shadow-pop space-y-4 overflow-y-auto max-h-[85vh]" role="dialog" aria-modal="true" aria-labelledby="pixiv-connect-title" @submit.prevent="submit">
+      <form class="w-full max-w-md rounded-2xl border border-canvas-border bg-canvas-panel p-6 shadow-pop space-y-4 overflow-y-auto max-h-[85vh]" ref="dialogRef" role="dialog" aria-modal="true" aria-labelledby="pixiv-connect-title" @submit.prevent="submit">
         <h2 id="pixiv-connect-title" class="text-lg font-semibold text-ink">Pixivに接続</h2>
         <div class="flex gap-3 text-xs">
           <button type="button" class="underline" :class="usePixivLogin ? 'text-pixiv font-semibold' : 'text-ink-muted'" @click="usePixivLogin = true">Pixivでログイン</button>

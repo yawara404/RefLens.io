@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
 import { X, Keyboard, MousePointer2, Hand, Layers, Wand2, ZoomIn, HelpCircle } from 'lucide-vue-next'
 import { useHelpStore } from '~/stores/helpStore'
+import { useDialogA11y } from '~/composables/useDialogA11y'
 
 const helpStore = useHelpStore()
+
+// モーダル共通のキーボード操作とフォーカス管理。
+const { dialogRef } = useDialogA11y(computed(() => helpStore.isOpen), () => helpStore.close())
 
 interface ShortcutGroup {
   title: string
@@ -76,15 +80,6 @@ const GROUPS: ShortcutGroup[] = [
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
 
-function onKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    helpStore.close()
-  }
-}
-
-onMounted(() => window.addEventListener('keydown', onKeyDown))
-onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 </script>
 
 <template>
@@ -96,7 +91,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
     >
       <div
         class="w-full max-w-4xl rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop animate-scale-in"
-        role="dialog"
+        ref="dialogRef" role="dialog"
         aria-modal="true"
         aria-label="キーボードショートカット一覧"
       >

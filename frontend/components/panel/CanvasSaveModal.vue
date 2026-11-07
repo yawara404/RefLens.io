@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, toRef } from 'vue'
 import { Folder, X, Check, Bookmark, Layers, RefreshCw } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
 import { useToast } from '~/composables/useToast'
 import { useMediaUrl } from '~/composables/useMediaUrl'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
+import { useDialogA11y } from '~/composables/useDialogA11y'
 
 const props = defineProps<{
   isOpen: boolean
@@ -19,6 +20,9 @@ const emit = defineEmits<{
 const boardStore = useBoardStore()
 const toast = useToast()
 const { resolveMediaUrl } = useMediaUrl()
+
+// Esc で閉じる / 背景スクロールを止める
+const { dialogRef } = useDialogA11y(toRef(props, 'isOpen'), () => emit('close'))
 
 const targetFolder = ref('All References')
 const targetScope = ref<'all' | 'selected'>('all')
@@ -75,7 +79,7 @@ async function handleSave() {
     >
       <div
         class="w-full max-w-lg rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop relative overflow-visible animate-scale-in"
-        role="dialog"
+        ref="dialogRef" role="dialog"
         aria-modal="true"
         aria-label="キャンバス上の資料を一括フォルダ保存"
       >
