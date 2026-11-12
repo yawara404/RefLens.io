@@ -43,20 +43,23 @@ import { useImageProcessor } from '~/composables/useImageProcessor'
 import { useToast } from '~/composables/useToast'
 import { useMobileNav } from '~/composables/useMobileNav'
 import { useSearchSuggest } from '~/composables/useSearchSuggest'
+import { useSeo } from '~/composables/useSeo'
+import { useRequireAuth } from '~/composables/useRequireAuth'
+import { formatFolderLabel } from '~/utils/folders'
+
+useSeo({
+  title: 'Pixivビューア | RefLens.io',
+  description: 'Pixivのおすすめ・ランキング・検索・ブックマークを、RefLensのライブラリやキャンバスへ直接取り込めます。',
+  path: '/view',
+})
 
 const boardStore = useBoardStore()
 const auth = useAuthStore()
 const pixiv = usePixiv()
 const toast = useToast()
 
-function requireAuth(actionLabel = 'この操作'): boolean {
-  if (!auth.isAuthenticated) {
-    toast.info(`${actionLabel}はログイン専用です。新規登録またはログインしてご利用ください。`)
-    window.dispatchEvent(new Event('reflens:auth-switch'))
-    return false
-  }
-  return true
-}
+/** ログイン専用アクションのガード（通知とダイアログ起動は共通 composable） */
+const requireAuth = useRequireAuth()
 const { apiBase } = useBackendUrl()
 const { resolveMediaUrl } = useMediaUrl()
 const { copyToClipboard } = useImageProcessor()
@@ -110,10 +113,6 @@ const selectedTargetFolder = ref<string>('All References')
 const selectedSavedFolderFilter = ref<string | null>(null)
 const dragOverSavedFolder = ref<string | null>(null)
 
-function formatFolderLabel(name?: string | null): string {
-  if (!name || name === 'All References') return 'すべての資料'
-  return name
-}
 
 const activeCategoryLabel = computed(
   () => CATEGORIES.find(c => c.id === activeCategory.value)?.label || 'おすすめ'

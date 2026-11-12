@@ -12,11 +12,13 @@ User-agent: *
 Allow: /RefLens.io/
 Allow: /RefLens.io/canvas
 Allow: /RefLens.io/view
+Allow: /RefLens.io/help
 Allow: /RefLens.io/about
 Allow: /RefLens.io/terms
 Allow: /RefLens.io/privacy
 Disallow: /RefLens.io/api/
 Disallow: /RefLens.io/account
+Disallow: /RefLens.io/board/
 
 Sitemap: https://art.wawa-app.me/RefLens.io/sitemap.xml
 `
@@ -27,11 +29,11 @@ const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <!-- RefLens.io ホーム / Manager -->
   <url>
     <loc>https://art.wawa-app.me/RefLens.io/</loc>
-    <lastmod>2026-11-05</lastmod>
+    <lastmod>2026-11-07</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
     <image:image>
-      <image:loc>https://art.wawa-app.me/RefLens.io/favicon-card.png</image:loc>
+      <image:loc>https://art.wawa-app.me/RefLens.io/card-v2.png</image:loc>
       <image:title>RefLens.io - Smart Infinite Canvas for Artists</image:title>
       <image:caption>Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス</image:caption>
     </image:image>
@@ -40,7 +42,7 @@ const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <!-- 無限キャンバス -->
   <url>
     <loc>https://art.wawa-app.me/RefLens.io/canvas</loc>
-    <lastmod>2026-11-05</lastmod>
+    <lastmod>2026-11-07</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
@@ -48,15 +50,23 @@ const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <!-- Pixiv ビューワー -->
   <url>
     <loc>https://art.wawa-app.me/RefLens.io/view</loc>
-    <lastmod>2026-11-05</lastmod>
+    <lastmod>2026-11-07</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+
+  <!-- 使い方・操作ガイド -->
+  <url>
+    <loc>https://art.wawa-app.me/RefLens.io/help</loc>
+    <lastmod>2026-11-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
   </url>
 
   <!-- このサイトについて -->
   <url>
     <loc>https://art.wawa-app.me/RefLens.io/about</loc>
-    <lastmod>2026-11-05</lastmod>
+    <lastmod>2026-11-07</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -64,7 +74,7 @@ const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <!-- 利用上の注意 -->
   <url>
     <loc>https://art.wawa-app.me/RefLens.io/terms</loc>
-    <lastmod>2026-11-05</lastmod>
+    <lastmod>2026-11-07</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
   </url>
@@ -72,7 +82,7 @@ const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <!-- プライバシーポリシー -->
   <url>
     <loc>https://art.wawa-app.me/RefLens.io/privacy</loc>
-    <lastmod>2026-11-05</lastmod>
+    <lastmod>2026-11-07</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
   </url>

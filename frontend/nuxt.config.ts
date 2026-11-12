@@ -59,24 +59,26 @@ export default defineNuxtConfig({
           property: 'og:description',
           content: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。'
         },
-        { property: 'og:image', content: 'https://art.wawa-app.me/RefLens.io/favicon-card.png' },
+        { property: 'og:image', content: 'https://art.wawa-app.me/RefLens.io/card-v2.png' },
+        { property: 'og:image:secure_url', content: 'https://art.wawa-app.me/RefLens.io/card-v2.png' },
         { property: 'og:image:type', content: 'image/png' },
-        { property: 'og:image:width', content: '512' },
-        { property: 'og:image:height', content: '512' },
-        { property: 'og:image:alt', content: 'RefLens.io コンパスマーク アイコン' },
+        { property: 'og:image:width', content: '1200' },
+        { property: 'og:image:height', content: '630' },
+        { property: 'og:image:alt', content: 'RefLens.io のカード画像（無限キャンバスのイメージ）' },
 
         // Twitter Card
-        { name: 'twitter:card', content: 'summary' },
+        { name: 'twitter:card', content: 'summary_large_image' },
         { name: 'twitter:title', content: 'RefLens.io - Smart Infinite Canvas for Artists' },
         {
           name: 'twitter:description',
           content: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。'
         },
-        { name: 'twitter:image', content: 'https://art.wawa-app.me/RefLens.io/favicon-card.png' },
-        { name: 'twitter:image:alt', content: 'RefLens.io コンパスマーク アイコン' },
+        { name: 'twitter:url', content: 'https://art.wawa-app.me/RefLens.io/' },
+        { name: 'twitter:image', content: 'https://art.wawa-app.me/RefLens.io/card-v2.png' },
+        { name: 'twitter:image:alt', content: 'RefLens.io のカード画像（無限キャンバスのイメージ）' },
       ],
       link: [
-        { rel: 'canonical', href: 'https://art.wawa-app.me/RefLens.io/' },
+        { rel: 'canonical', key: 'canonical', href: 'https://art.wawa-app.me/RefLens.io/' },
         { rel: 'sitemap', type: 'application/xml', title: 'Sitemap', href: `${appBase}sitemap.xml` },
         { rel: 'icon', type: 'image/svg+xml', href: `${appBase}favicon.svg` },
         { rel: 'icon', type: 'image/x-icon', href: `${appBase}favicon.ico` },

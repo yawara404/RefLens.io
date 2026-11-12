@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>RefLens.io OGP card</title>
+    <!--
+      SNS のカード画像 (1200x630) の元データ。
+      tools/make-og-card.sh で frontend/public/card.png を再生成できます。
+      配色・コピーは frontend/components/landing/LandingHero.vue に合わせています。
+    -->
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      html, body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        padding: 34px 44px 30px;
+        gap: 18px;
+        color: #111418;
+        background-color: #f4f5f7;
+        background-image:
+          radial-gradient(620px 380px at 102% -12%, rgba(67, 56, 202, 0.10), transparent 70%),
+          radial-gradient(520px 320px at -8% 108%, rgba(0, 150, 250, 0.07), transparent 70%);
+        font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans',
+          'Hiragino Kaku Gothic ProN', 'Noto Sans JP', Meiryo, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .mono {
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+      }
+
+      /* ---------- 上端: ロゴ + URL ---------- */
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+      }
+
+      .brand { display: flex; align-items: center; gap: 13px; }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 46px;
+        height: 46px;
+        border-radius: 13px;
+        background: #4338ca;
+        box-shadow: 0 8px 18px rgba(67, 56, 202, 0.24);
+      }
+
+      .mark svg { width: 26px; height: 26px; }
+
+      .brand-text { display: flex; flex-direction: column; gap: 1px; }
+
+      .brand-text strong {
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: -0.4px;
+        color: #111418;
+        line-height: 1.1;
+      }
+
+      .brand-text strong span { color: #0096fa; }
+
+      .brand-text small {
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+        font-size: 10px;
+        color: #5e6675;
+        letter-spacing: 0.2px;
+      }
+
+      .url-pill {
+        padding: 8px 15px;
+        border: 1px solid #d8dce3;
+        border-radius: 999px;
+        background: #ffffff;
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+        font-size: 12px;
+        color: #4b5260;
+        letter-spacing: 0.3px;
+      }
+
+      /* ---------- ヒーロー枠 ---------- */
+      .frame {
+        position: relative;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 28px 34px 22px;
+        border: 2px solid #b8bfcc;
+        border-radius: 20px;
+        background: #ffffff;
+        box-shadow: 0 18px 40px rgba(17, 20, 24, 0.08);
+        overflow: hidden;
+      }
+
+      .grid-overlay {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(#6366f1 1px, transparent 1px);
+        background-size: 16px 16px;
+        opacity: 0.05;
+        pointer-events: none;
+      }
+
+      .glow {
+        position: absolute;
+        top: -120px;
+        right: -90px;
+        width: 320px;
+        height: 320px;
+        border-radius: 999px;
+        background: rgba(67, 56, 202, 0.10);
+        filter: blur(48px);
+        pointer-events: none;
+      }
+
+      .hero {
+        position: relative;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 30px;
+        width: 100%;
+        min-height: 0;
+      }
+
+      .copy {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        align-self: flex-start;
+        padding: 5px 11px;
+        border: 1px solid rgba(67, 56, 202, 0.25);
+        border-radius: 999px;
+        background: rgba(67, 56, 202, 0.08);
+        color: #4338ca;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 1.3px;
+        text-transform: uppercase;
+      }
+
+      .badge i {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: #4338ca;
+        box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.16);
+      }
+
+      h1 {
+        font-size: 42px;
+        font-weight: 800;
+        line-height: 1.26;
+        letter-spacing: -1.2px;
+        color: #111418;
+      }
+
+      h1 em {
+        font-style: normal;
+        color: #4338ca;
+        text-decoration: underline;
+        text-decoration-color: rgba(67, 56, 202, 0.32);
+        text-decoration-thickness: 2px;
+        text-underline-offset: 8px;
+      }
+
+      .lead {
+        font-size: 13px;
+        line-height: 1.85;
+        color: #4b5260;
+        max-width: 520px;
+        line-break: strict;
+        word-break: auto-phrase;
+      }
+
+      .lead b { color: #111418; font-weight: 700; }
+
+      /* ---------- ボタン ---------- */
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-top: 2px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 9px 16px;
+        border-radius: 11px;
+        font-size: 12.5px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .btn.primary {
+        background: #4338ca;
+        color: #ffffff;
+        box-shadow: 0 6px 14px rgba(67, 56, 202, 0.26);
+      }
+
+      .btn.ghost {
+        background: #ffffff;
+        border: 1px solid #b8bfcc;
+        color: #111418;
+      }
+
+      .btn.ghost .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        border: 2px solid #4338ca;
+      }
+
+      .link {
+        margin-left: 2px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #5e6675;
+      }
+
+      /* ---------- ステータス行 ---------- */
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 2px;
+        padding-top: 14px;
+        border-top: 1px solid #e6e9ee;
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+      }
+
+      .stats span {
+        display: block;
+        font-size: 9.5px;
+        letter-spacing: 1.1px;
+        text-transform: uppercase;
+        color: #5e6675;
+      }
+
+      .stats b {
+        display: block;
+        margin-top: 3px;
+        font-size: 13px;
+        font-weight: 700;
+        color: #111418;
+      }
+
+      .stats b.brand { color: #4338ca; }
+
+      /* ---------- 右側: キャンバスモック ---------- */
+      .visual {
+        flex: 0 0 372px;
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .canvas-card {
+        width: 372px;
+        padding: 14px;
+        border: 2px solid #b8bfcc;
+        border-radius: 14px;
+        background: #ffffff;
+        box-shadow: 0 10px 24px rgba(17, 20, 24, 0.07);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .canvas-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #d8dce3;
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+        font-size: 9.5px;
+        letter-spacing: 0.4px;
+        color: #5e6675;
+      }
+
+      .canvas-head b { color: #4338ca; font-weight: 700; }
+
+      .canvas-body {
+        position: relative;
+        height: 236px;
+        padding: 10px;
+        border: 1px solid #d8dce3;
+        border-radius: 10px;
+        background-color: #f8f9fb;
+        background-image:
+          linear-gradient(to right, rgba(128, 128, 128, 0.10) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(128, 128, 128, 0.10) 1px, transparent 1px);
+        background-size: 14px 14px;
+        overflow: hidden;
+      }
+
+      .mini {
+        position: absolute;
+        padding: 6px;
+        border-radius: 8px;
+        background: #ffffff;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .mini.c1 {
+        left: 20px;
+        top: 16px;
+        width: 132px;
+        border: 1.5px solid #4338ca;
+        box-shadow: 0 6px 14px rgba(67, 56, 202, 0.16);
+        transform: rotate(-2deg);
+      }
+
+      .mini.c2 {
+        right: 16px;
+        bottom: 56px;
+        width: 148px;
+        border: 1px solid #b8bfcc;
+        box-shadow: 0 6px 14px rgba(17, 20, 24, 0.08);
+        transform: rotate(3deg);
+      }
+
+      .thumb {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 5px;
+        font-size: 9.5px;
+        font-weight: 700;
+      }
+
+      .c1 .thumb {
+        height: 66px;
+        background: rgba(67, 56, 202, 0.10);
+        border: 1px solid rgba(67, 56, 202, 0.20);
+        color: #4338ca;
+      }
+
+      .c2 .thumb {
+        height: 54px;
+        background: rgba(0, 150, 250, 0.10);
+        border: 1px solid rgba(0, 150, 250, 0.22);
+        color: #0096fa;
+      }
+
+      .mini .meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 8px;
+        color: #5e6675;
+      }
+
+      .mini .meta .bullet {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: #4338ca;
+      }
+
+      .mini .meta .swatches { display: flex; align-items: center; gap: 3px; }
+
+      .mini .meta .swatches i {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+      }
+
+      .mini .meta .swatches i:nth-child(1) { background: #38bdf8; }
+      .mini .meta .swatches i:nth-child(2) { background: #f43f5e; }
+      .mini .meta .swatches i:nth-child(3) { background: #fbbf24; }
+
+      .mini .meta .src {
+        margin-left: 4px;
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+        color: #5e6675;
+      }
+
+      .ai-pill {
+        position: absolute;
+        left: 14px;
+        bottom: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: #4338ca;
+        color: #ffffff;
+        font-size: 8.5px;
+        font-weight: 700;
+        box-shadow: 0 4px 10px rgba(67, 56, 202, 0.28);
+        z-index: 2;
+      }
+
+      .ai-pill svg { width: 10px; height: 10px; }
+
+      .canvas-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 9.5px;
+        color: #4b5260;
+      }
+
+      .canvas-foot b {
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+        font-weight: 400;
+        color: #5e6675;
+      }
+
+      .canvas-foot .compass {
+        color: #4338ca;
+        margin-right: 3px;
+      }
+
+      /* ---------- 下端: 3つの特徴（ランディングの 01/02/03 カード相当） ---------- */
+      .features {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-top: 1px solid #e6e9ee;
+        padding-top: 11px;
+      }
+
+      .feat {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        padding: 0 14px;
+        border-left: 1px solid #e6e9ee;
+        min-width: 0;
+      }
+
+      .feat:first-child { padding-left: 0; border-left: 0; }
+
+      .feat .k {
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.9px;
+        text-transform: uppercase;
+        color: #4338ca;
+      }
+
+      .feat .k.pixiv { color: #0096fa; }
+
+      .feat b {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #111418;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <polygon points="16.2,7.8 13.9,13.9 7.8,16.2 10.1,10.1" fill="#ffffff" fill-opacity="0.35" />
+            <polygon points="16.2,7.8 13.9,13.9 12,12 10.1,10.1" fill="#ffffff" />
+          </svg>
+        </span>
+        <span class="brand-text">
+          <strong>RefLens<span>.io</span></strong>
+          <small>Raindrop x pixiv x PureRef</small>
+        </span>
+      </div>
+      <span class="url-pill">art.wawa-app.me/RefLens.io</span>
+    </header>
+
+    <section class="frame">
+      <div class="grid-overlay"></div>
+      <div class="glow"></div>
+
+      <div class="hero">
+        <div class="copy">
+          <div class="badge"><i></i>RefLens Archive &amp; Infinite Canvas</div>
+
+          <h1>描く人のための、<br /><em>無限の資料庫。</em></h1>
+
+          <p class="lead">
+            Raindrop × pixiv × PureRef。Web画像、pixivイラスト、手持ちの設定資料を1枚の無限キャンバスに自由配置。<br />
+            <b>Ollama AI</b> がタグの有無に関係なく、被写体・色彩・構図を自動認識します。
+          </p>
+
+          <div class="actions">
+            <span class="btn primary">アカウントを作る <span>→</span></span>
+            <span class="btn ghost"><span class="dot"></span>デモを体験する</span>
+            <span class="link">ログイン</span>
+          </div>
+
+          <div class="stats">
+            <div><span>Canvas</span><b>INFINITE</b></div>
+            <div><span>AI Search</span><b class="brand">OLLAMA</b></div>
+            <div><span>Prediction</span><b>0 ms</b></div>
+          </div>
+        </div>
+
+        <div class="visual">
+          <div class="canvas-card">
+            <div class="canvas-head">
+              <span>[READY] REFLENS_CANVAS_01</span>
+              <b>ONLINE</b>
+            </div>
+
+            <div class="canvas-body">
+              <div class="mini c1">
+                <div class="thumb">1girl / Pose</div>
+                <div class="meta"><span>#立ち絵</span><span class="bullet"></span></div>
+              </div>
+
+              <div class="mini c2">
+                <div class="thumb">Lighting &amp; Color</div>
+                <div class="meta">
+                  <span class="swatches"><i></i><i></i><i></i></span>
+                  <span class="src">pixiv</span>
+                </div>
+              </div>
+
+              <div class="ai-pill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
+                </svg>
+                <span>Ollama AI: 「女の子」「水着」</span>
+              </div>
+            </div>
+
+            <div class="canvas-foot">
+              <span><span class="compass">◇</span>PureRef Like Controls</span>
+              <b>NO LIMITS</b>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="features">
+        <div class="feat">
+          <span class="k">01 / Canvas</span>
+          <b>PureRef風の無限キャンバス。</b>
+        </div>
+        <div class="feat">
+          <span class="k pixiv">02 / Stock</span>
+          <b>pixiv・Webから1クリック保存。</b>
+        </div>
+        <div class="feat">
+          <span class="k">03 / AI Vision</span>
+          <b>タグなしでも被写体をAI認識。</b>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

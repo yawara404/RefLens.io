@@ -3,6 +3,7 @@ import { ref, nextTick, computed } from 'vue'
 import { ExternalLink, FolderInput, Layers, MoreHorizontal, Trash2, X, Check, ArrowLeft, Plus, Tag, Sparkles } from 'lucide-vue-next'
 import type { BookmarkItem, FolderItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
+import { formatFolderLabel } from '~/utils/folders'
 
 const props = withDefaults(defineProps<{ item: BookmarkItem; folders?: FolderItem[] }>(), {
   folders: () => [],
@@ -34,11 +35,6 @@ function close() {
 }
 
 const { dialogRef } = useDialogA11y(open, close)
-
-function formatFolderLabel(name?: string): string {
-  if (!name || name === 'All References') return 'すべての資料'
-  return name
-}
 
 function chooseFolder(name: string) {
   if (name !== props.item.folder_name) emit('move', name)

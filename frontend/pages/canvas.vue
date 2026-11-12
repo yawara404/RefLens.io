@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useBoardStore } from '~/stores/boardStore'
+import { useSeo } from '~/composables/useSeo'
+
+useSeo({
+  title: 'Canvas（無限キャンバス） | RefLens.io',
+  description: '参照資料を自由に並べ、拡大縮小・回転・AI解析ができる無限キャンバス。',
+  path: '/canvas',
+})
 
 const boardStore = useBoardStore()
 const error = ref('')

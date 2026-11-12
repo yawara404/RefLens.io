@@ -27,6 +27,8 @@ import AssetFileBrowser from '~/components/browser/AssetFileBrowser.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
 import { useAuthStore } from '~/stores/authStore'
 import { useToast } from '~/composables/useToast'
+import { useSeo } from '~/composables/useSeo'
+import { useRequireAuth } from '~/composables/useRequireAuth'
 
 const route = useRoute()
 const boardStore = useBoardStore()
@@ -35,6 +37,17 @@ const auth = useAuthStore()
 const toast = useToast()
 
 const boardId = computed(() => route.params.id as string)
+
+// ボードは個人の作業スペースなので検索インデックスには載せない（タイトルだけタブに反映）
+useSeo(computed(() => {
+  const name = boardStore.currentBoard?.title?.trim()
+  return {
+    title: name ? `${name} | Canvas | RefLens.io` : 'Canvas | RefLens.io',
+    description: 'ボードに配置した参照資料を無限キャンバスで閲覧できます。',
+    path: `/board/${boardId.value}`,
+    noindex: true,
+  }
+}))
 
 const canvasRef = ref<any>(null)
 const isInsightOpen = ref(false)
@@ -46,14 +59,8 @@ const editableTitle = ref('')
 const boardReady = ref(false)
 const loadError = ref(false)
 
-function requireAuth(actionLabel = 'この操作'): boolean {
-  if (!auth.isAuthenticated) {
-    toast.info(`${actionLabel}はログイン専用です。新規登録またはログインしてご利用ください。`)
-    window.dispatchEvent(new Event('reflens:auth-switch'))
-    return false
-  }
-  return true
-}
+/** ログイン専用アクションのガード（通知とダイアログ起動は共通 composable） */
+const requireAuth = useRequireAuth()
 
 function handleOpenSaveModal() {
   if (!requireAuth('キャンバスの一括フォルダ保存')) return

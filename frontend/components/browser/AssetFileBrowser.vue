@@ -32,6 +32,8 @@ import { usePixiv, type PixivArtwork } from '~/composables/usePixiv'
 import PixivImage from '~/components/ui/PixivImage.vue'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
+import { buildBookmarkCorpus, topAiTags } from '~/utils/bookmarks'
+import { formatFolderLabel } from '~/utils/folders'
 
 const props = defineProps<{ boardId: string; insightOpen?: boolean }>()
 
@@ -130,10 +132,6 @@ function getFolderPreviewThumbs(folder: FolderItem): string[] {
     .filter(Boolean)
 }
 
-function formatFolderLabel(name?: string): string {
-  return !name || name === 'All References' ? 'すべての資料' : name
-}
-
 function selectFolderAndOpenLibrary(folderName: string) {
   isPixivFeedMode.value = false
   boardStore.selectedFolder = folderName
@@ -147,19 +145,7 @@ function openPixivBookmarksFeed() {
 }
 
 /** よく使われているAIタグ（上位10件） */
-const popularAiTags = computed(() => {
-  const counts = new Map<string, number>()
-  for (const b of boardStore.bookmarks) {
-    for (const tag of b.ai_analysis?.tags || []) {
-      const t = tag.trim()
-      if (t) counts.set(t, (counts.get(t) || 0) + 1)
-    }
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([tag]) => tag)
-})
+const popularAiTags = computed(() => topAiTags(boardStore.bookmarks, 10).map(item => item.tag))
 
 const matchingPopularTags = computed(() => {
   const q = localSearch.value.toLowerCase().trim()
@@ -185,16 +171,7 @@ const displayedBookmarks = computed(() => {
     }
     if (!q) return true
 
-    const corpus = [
-      b.title,
-      b.author_name || '',
-      b.folder_name || '',
-      b.source_url || '',
-      (b.ai_analysis?.tags || []).join(' '),
-      b.ai_analysis?.composition || '',
-      b.ai_analysis?.lighting || '',
-    ].join(' ')
-    return corpus.toLowerCase().includes(q)
+    return buildBookmarkCorpus(b).includes(q)
   })
 })
 

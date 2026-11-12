@@ -22,6 +22,7 @@ import {
 import { useBoardStore } from '~/stores/boardStore'
 import { useAuthStore } from '~/stores/authStore'
 import { useToast } from '~/composables/useToast'
+import { useRequireAuth } from '~/composables/useRequireAuth'
 
 defineProps<{ boardId: string }>()
 
@@ -38,14 +39,9 @@ const boardStore = useBoardStore()
 const auth = useAuthStore()
 const toast = useToast()
 
-function requireAuth(actionLabel = 'この操作'): boolean {
-  if (!auth.isAuthenticated) {
-    toast.info(`${actionLabel}はログイン専用です。新規登録またはログインしてご利用ください。`)
-    window.dispatchEvent(new Event('reflens:auth-switch'))
-    return false
-  }
-  return true
-}
+/** ログイン専用アクションのガード（通知とダイアログ起動は共通 composable） */
+const requireAuth = useRequireAuth()
+
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const openMenu = ref(false)
 const isAddModalOpen = ref(false)

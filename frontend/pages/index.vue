@@ -45,6 +45,23 @@ import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useToast } from '~/composables/useToast'
 import { useImageProcessor } from '~/composables/useImageProcessor'
 import { useMobileNav } from '~/composables/useMobileNav'
+import { useRequireAuth } from '~/composables/useRequireAuth'
+import { useSeo } from '~/composables/useSeo'
+import {
+  BOOKMARK_SORT_OPTIONS as SORT_OPTIONS,
+  bookmarkMinColorDistance,
+  buildBookmarkCorpus,
+  sortBookmarks,
+  topAiTags,
+  type BookmarkSortOrder as SortOrder,
+} from '~/utils/bookmarks'
+import { folderColorByName, formatFolderLabel } from '~/utils/folders'
+
+useSeo({
+  title: 'RefLens.io - Smart Infinite Canvas for Artists',
+  description: 'Raindrop × pixiv × PureRef。資料のブックマーク・フォルダ整理・AI解析と無限キャンバスをひとつに。',
+  path: '/',
+})
 
 const boardStore = useBoardStore()
 const auth = useAuthStore()
@@ -85,15 +102,8 @@ function triggerAuthDialog(mode?: 'login' | 'register') {
   window.dispatchEvent(new Event('reflens:auth-switch'))
 }
 
-/** ログイン専用アクションのガード関数 */
-function requireAuth(actionLabel = 'この操作'): boolean {
-  if (!auth.isAuthenticated) {
-    toast.info(`${actionLabel}はログイン専用です。新規登録またはログインしてご利用ください。`)
-    triggerAuthDialog('login')
-    return false
-  }
-  return true
-}
+/** ログイン専用アクションのガード（通知とダイアログ起動は共通 composable） */
+const requireAuth = useRequireAuth()
 
 /**
  * Manager の 3 構成ナビゲーション:
@@ -251,26 +261,6 @@ const selectedColor = ref<string | null>(null)
 const colorMode = ref<'sort' | 'filter'>('sort')
 const COLOR_FILTER_THRESHOLD = 145
 
-type SortOrder =
-  | 'newest'
-  | 'oldest'
-  | 'color_hue'
-  | 'color_bright'
-  | 'color_dark'
-  | 'folder_color'
-  | 'title'
-  | 'author'
-
-const SORT_OPTIONS: { id: SortOrder; label: string }[] = [
-  { id: 'newest', label: '追加が新しい順' },
-  { id: 'oldest', label: '追加が古い順' },
-  { id: 'color_hue', label: 'カラー順（色相スペクトル）' },
-  { id: 'color_bright', label: 'カラー順（明るい順）' },
-  { id: 'color_dark', label: 'カラー順（暗い順）' },
-  { id: 'folder_color', label: 'フォルダカラー順' },
-  { id: 'title', label: 'タイトル順' },
-  { id: 'author', label: '作者名順' },
-]
 const sortOrder = ref<SortOrder>('newest')
 
 type FolderSortOrder =
@@ -295,116 +285,6 @@ const FOLDER_SORT_OPTIONS: { id: FolderSortOrder; label: string }[] = [
 const FOLDER_SORT_KEY = 'reflens-folder-sort-order'
 const folderSortOrder = ref<FolderSortOrder>('custom')
 
-function hexToRgb(hex: string): [number, number, number] | null {
-  const clean = (hex || '').trim().replace(/^#/, '')
-  if (/^[0-9a-f]{3}$/i.test(clean)) {
-    return [
-      parseInt(clean[0] + clean[0], 16),
-      parseInt(clean[1] + clean[1], 16),
-      parseInt(clean[2] + clean[2], 16),
-    ]
-  }
-  if (!/^[0-9a-f]{6}$/i.test(clean)) return null
-  return [
-    parseInt(clean.slice(0, 2), 16),
-    parseInt(clean.slice(2, 4), 16),
-    parseInt(clean.slice(4, 6), 16),
-  ]
-}
-
-function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
-  const rn = r / 255
-  const gn = g / 255
-  const bn = b / 255
-  const max = Math.max(rn, gn, bn)
-  const min = Math.min(rn, gn, bn)
-  const l = (max + min) / 2
-  let h = 0
-  let s = 0
-
-  if (max !== min) {
-    const d = max - min
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-    switch (max) {
-      case rn:
-        h = (gn - bn) / d + (gn < bn ? 6 : 0)
-        break
-      case gn:
-        h = (bn - rn) / d + 2
-        break
-      default:
-        h = (rn - gn) / d + 4
-        break
-    }
-    h *= 60
-  }
-  return { h, s, l }
-}
-
-/** 人間の視覚特性に重み付けしたRGB色差（0〜765程度） */
-function colorDistance(hexA: string, hexB: string): number {
-  const a = hexToRgb(hexA)
-  const b = hexToRgb(hexB)
-  if (!a || !b) return 999
-  const rMean = (a[0] + b[0]) / 2
-  const dr = a[0] - b[0]
-  const dg = a[1] - b[1]
-  const db = a[2] - b[2]
-  return Math.sqrt(
-    (2 + rMean / 256) * dr * dr +
-      4 * dg * dg +
-      (2 + (255 - rMean) / 256) * db * db
-  )
-}
-
-function getFolderColorByName(folderName?: string): string {
-  if (!folderName) return '#6366f1'
-  const found = boardStore.folders.find(f => f.name === folderName)
-  return found?.color || '#6366f1'
-}
-
-/** ブックマークのカラーパレット（未設定時はフォルダカラーにフォールバック） */
-function getBookmarkPalette(b: BookmarkItem): string[] {
-  const palette = b.ai_analysis?.palette?.filter(hex => !!hexToRgb(hex)) || []
-  if (palette.length) return palette
-  return [getFolderColorByName(b.folder_name)]
-}
-
-/** 指定カラーとブックマークのパレット間の最小色差を返す */
-function getBookmarkMinColorDistance(b: BookmarkItem, targetHex: string): number {
-  const palette = getBookmarkPalette(b)
-  let min = 999
-  for (const hex of palette) {
-    const dist = colorDistance(hex, targetHex)
-    if (dist < min) min = dist
-  }
-  return min
-}
-
-/** ブックマークの代表色から色相（Hue）・輝度（Luminance）を算出 */
-function getBookmarkColorMetrics(b: BookmarkItem): { hue: number; luminance: number; saturation: number } {
-  const palette = getBookmarkPalette(b)
-  // 彩度がある色を優先して代表色にする（無彩色ばかりの場合は先頭色）
-  let bestHsl = { h: 360, s: 0, l: 0.5 }
-  let bestLum = 0.5
-  for (let i = 0; i < palette.length; i++) {
-    const rgb = hexToRgb(palette[i])
-    if (!rgb) continue
-    const hsl = rgbToHsl(rgb[0], rgb[1], rgb[2])
-    const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
-    if (i === 0) {
-      bestHsl = hsl
-      bestLum = lum
-    }
-    if (hsl.s > bestHsl.s + 0.12) {
-      bestHsl = hsl
-    }
-  }
-  // 彩度が極端に低い（モノクロ/グレー）は色相末尾にまとめる
-  const effectiveHue = bestHsl.s < 0.08 ? 360 + bestLum * 10 : bestHsl.h
-  return { hue: effectiveHue, luminance: bestLum, saturation: bestHsl.s }
-}
-
 const FOLDER_ORDER_KEY = 'reflens-folder-order'
 const folderOrder = ref<string[]>([])
 
@@ -420,19 +300,7 @@ const SOURCE_VIEWS = [
 ] as const
 
 /** 全ブックマークから頻出AIタグを抽出（スマート総合検索用） */
-const popularAiTags = computed(() => {
-  const counts = new Map<string, number>()
-  for (const b of boardStore.bookmarks) {
-    for (const tag of b.ai_analysis?.tags || []) {
-      const t = tag.trim()
-      if (t) counts.set(t, (counts.get(t) || 0) + 1)
-    }
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 14)
-    .map(([tag, count]) => ({ tag, count }))
-})
+const popularAiTags = computed(() => topAiTags(boardStore.bookmarks, 14))
 
 /** 検索クエリに合致するライブラリ内AIタグ（サジェスト用） */
 const matchingPopularTags = computed(() => {
@@ -450,7 +318,7 @@ const filteredBookmarks = computed(() => {
 
     // 検索タブでカラー絞り込みモード（filter）が有効な場合は近似色のみ抽出
     if (activeSection.value === 'search' && selectedColor.value && colorMode.value === 'filter') {
-      if (getBookmarkMinColorDistance(b, selectedColor.value) > COLOR_FILTER_THRESHOLD) {
+      if (bookmarkMinColorDistance(b, selectedColor.value, boardStore.folders) > COLOR_FILTER_THRESHOLD) {
         return false
       }
     }
@@ -458,16 +326,7 @@ const filteredBookmarks = computed(() => {
     // ライブラリ表示時は検索クエリを適用しない（検索タブと役割を明確に分離）
     if (activeSection.value !== 'search' || !q) return true
 
-    const corpus = [
-      b.title,
-      b.author_name || '',
-      b.source_url || '',
-      b.folder_name || '',
-      (b.ai_analysis?.tags || []).join(' '),
-      b.ai_analysis?.composition || '',
-      b.ai_analysis?.lighting || '',
-      (b.ai_analysis?.palette || []).join(' '),
-    ].join(' ').toLowerCase()
+    const corpus = buildBookmarkCorpus(b)
 
     // 入力キーワードの直接マッチ
     if (corpus.includes(q)) return true
@@ -497,58 +356,13 @@ function resolveThumbnail(path?: string) {
   return resolveMediaUrl(path)
 }
 
-const visibleBookmarks = computed(() => {
-  const list = [...filteredBookmarks.value]
-  const addedAt = (b: BookmarkItem) => (b.created_at ? Date.parse(b.created_at) : 0)
-
-  // 検索画面でターゲットカラーが選択されている場合は、指定色に近い順（カラーソート）を最優先
-  if (activeSection.value === 'search' && selectedColor.value) {
-    const target = selectedColor.value
-    return list.sort((a, b) => {
-      const diff = getBookmarkMinColorDistance(a, target) - getBookmarkMinColorDistance(b, target)
-      return Math.abs(diff) > 0.5 ? diff : addedAt(b) - addedAt(a)
-    })
-  }
-
-  switch (sortOrder.value) {
-    case 'oldest':
-      return list.sort((a, b) => addedAt(a) - addedAt(b))
-    case 'color_hue':
-      return list.sort((a, b) => {
-        const ma = getBookmarkColorMetrics(a)
-        const mb = getBookmarkColorMetrics(b)
-        return ma.hue - mb.hue || mb.luminance - ma.luminance
-      })
-    case 'color_bright':
-      return list.sort((a, b) => {
-        const ma = getBookmarkColorMetrics(a)
-        const mb = getBookmarkColorMetrics(b)
-        return mb.luminance - ma.luminance || ma.hue - mb.hue
-      })
-    case 'color_dark':
-      return list.sort((a, b) => {
-        const ma = getBookmarkColorMetrics(a)
-        const mb = getBookmarkColorMetrics(b)
-        return ma.luminance - mb.luminance || ma.hue - mb.hue
-      })
-    case 'folder_color':
-      return list.sort((a, b) => {
-        const ca = getFolderColorByName(a.folder_name)
-        const cb = getFolderColorByName(b.folder_name)
-        const rgbA = hexToRgb(ca) || [99, 102, 241]
-        const rgbB = hexToRgb(cb) || [99, 102, 241]
-        const hslA = rgbToHsl(rgbA[0], rgbA[1], rgbA[2])
-        const hslB = rgbToHsl(rgbB[0], rgbB[1], rgbB[2])
-        return hslA.h - hslB.h || (a.folder_name || '').localeCompare(b.folder_name || '', 'ja')
-      })
-    case 'title':
-      return list.sort((a, b) => a.title.localeCompare(b.title, 'ja'))
-    case 'author':
-      return list.sort((a, b) => (a.author_name || '').localeCompare(b.author_name || '', 'ja'))
-    default:
-      return list.sort((a, b) => addedAt(b) - addedAt(a))
-  }
-})
+const visibleBookmarks = computed(() =>
+  sortBookmarks(filteredBookmarks.value, sortOrder.value, {
+    folders: boardStore.folders,
+    // 検索画面でターゲットカラーが選択されている場合は、指定色に近い順を最優先
+    targetColor: activeSection.value === 'search' ? selectedColor.value : null,
+  }),
+)
 
 /** ホーム下部に出す最近追加した資料（最新6件） */
 const recentBookmarks = computed(() => {
@@ -673,10 +487,6 @@ const activeFolderColors = computed(() => {
   }
   return [...map.entries()].map(([color, count]) => ({ color, count }))
 })
-
-function formatFolderLabel(name: string): string {
-  return name === 'All References' ? 'すべての資料' : name
-}
 
 /** 各フォルダに属するブックマーク一覧（ダッシュボードのサムネイル・件数表示用） */
 function getFolderBookmarks(folder: FolderItem): BookmarkItem[] {
@@ -2613,7 +2423,7 @@ onBeforeUnmount(() => {
                   <p class="text-[10px] font-medium text-ink-muted truncate flex items-center gap-1.5">
                     <span
                       class="w-2 h-2 rounded-full shrink-0"
-                      :style="{ backgroundColor: getFolderColorByName(b.folder_name) }"
+                      :style="{ backgroundColor: folderColorByName(boardStore.folders, b.folder_name) }"
                     />
                     <span class="truncate">{{ b.author_name || b.folder_name }}</span>
                   </p>
@@ -2671,7 +2481,7 @@ onBeforeUnmount(() => {
                   <p class="text-[11px] text-ink-subtle truncate flex items-center gap-1.5">
                     <span
                       class="w-2 h-2 rounded-full shrink-0"
-                      :style="{ backgroundColor: getFolderColorByName(b.folder_name) }"
+                      :style="{ backgroundColor: folderColorByName(boardStore.folders, b.folder_name) }"
                     />
                     <span class="capitalize">{{ b.source_type }}</span> ·
                     <span class="truncate">{{ b.author_name || b.folder_name }}</span>

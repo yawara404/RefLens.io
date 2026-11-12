@@ -8,15 +8,16 @@ import { useAuthStore } from '~/stores/authStore'
 import { useToast } from '~/composables/useToast'
 import SiteInfoPage from '~/components/ui/SiteInfoPage.vue'
 import AuthDialog from '~/components/ui/AuthDialog.vue'
+import { useSeo } from '~/composables/useSeo'
 
 const auth = useAuthStore()
 const toast = useToast()
 
-useHead({
+useSeo({
   title: '管理ページ | RefLens.io',
-  meta: [
-    { name: 'robots', content: 'noindex, nofollow' }
-  ]
+  description: 'RefLens.ioのアカウント設定、表示名の変更、Pixiv・Instagramの接続状態を管理します。',
+  path: '/account',
+  noindex: true,
 })
 
 /** 認証状態が確定するまで描画しない（ハイドレーション不一致の回避） */

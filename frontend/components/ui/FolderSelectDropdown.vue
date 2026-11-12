@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Folder, FolderPlus, Check, ChevronDown, Plus, Search, X } from 'lucide-vue-next'
+import { Folder, FolderPlus, Check, ChevronDown, Plus, Search, X, RefreshCw } from 'lucide-vue-next'
 import type { FolderItem } from '~/types'
 import { useBoardStore } from '~/stores/boardStore'
 import { useToast } from '~/composables/useToast'
@@ -14,6 +14,7 @@ const props = withDefaults(
     align?: 'left' | 'right' | 'top'
     placeholder?: string
     disabled?: boolean
+    buttonClass?: string
   }>(),
   {
     modelValue: 'All References',
@@ -22,6 +23,7 @@ const props = withDefaults(
     align: 'left',
     placeholder: 'フォルダを選択',
     disabled: false,
+    buttonClass: '',
   }
 )
 
@@ -96,6 +98,8 @@ function startCreating() {
   })
 }
 
+const isSubmitting = ref(false)
+
 async function handleCreateNewFolder() {
   const name = newName.value.trim()
   if (!name) {
@@ -109,22 +113,36 @@ async function handleCreateNewFolder() {
     return
   }
 
-  await boardStore.createFolder(name)
-  selectFolder(name)
-  toast.success('新規フォルダを作成しました', name)
+  try {
+    isSubmitting.value = true
+    await boardStore.createFolder(name)
+    selectFolder(name)
+  } catch (e: any) {
+    console.error('Failed to create folder:', e)
+    toast.error('フォルダの作成に失敗しました', e?.data?.detail || e?.message)
+  } finally {
+    isSubmitting.value = false
+  }
 }
 
 function handleClickOutside(event: MouseEvent) {
   if (!isOpen.value) return
+  // DOM の切り替え等で target が popoverRef から detach されても正確に判定できるように composedPath を優先
+  const path = event.composedPath?.() || []
+  if (
+    (popoverRef.value && path.includes(popoverRef.value)) ||
+    (triggerRef.value && path.includes(triggerRef.value))
+  ) {
+    return
+  }
   const target = event.target as Node | null
   if (
-    popoverRef.value &&
-    !popoverRef.value.contains(target) &&
-    triggerRef.value &&
-    !triggerRef.value.contains(target)
+    (popoverRef.value && target && popoverRef.value.contains(target)) ||
+    (triggerRef.value && target && triggerRef.value.contains(target))
   ) {
-    isOpen.value = false
+    return
   }
+  isOpen.value = false
 }
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -151,9 +169,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="inline-block text-left"
+    class="text-left"
+    :class="[
+      buttonClass?.includes('w-full') ? 'w-full block' : 'inline-block',
+      isOpen ? 'relative z-[85]' : 'relative'
+    ]"
     @keydown="handleKeyDown"
-    :class="isOpen ? 'relative z-[85]' : 'relative'"
   >
     <!-- トリガーボタン -->
     <button
@@ -162,6 +183,7 @@ onBeforeUnmount(() => {
       :disabled="disabled"
       class="group inline-flex items-center gap-1.5 rounded-xl border transition-all text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 select-none"
       :class="[
+        buttonClass,
         compact
           ? 'px-2 py-1 text-[11px] bg-canvas-card/90 hover:bg-canvas-card border-canvas-border text-ink'
           : 'px-2.5 py-1.5 bg-canvas-card hover:bg-canvas-hover border-canvas-border-strong text-ink shadow-sm',
@@ -175,7 +197,7 @@ onBeforeUnmount(() => {
         class="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
         :style="{ backgroundColor: selectedFolderItem.color || '#6366f1' }"
       />
-      <span class="truncate max-w-[110px] sm:max-w-[140px] text-left">
+      <span class="truncate max-w-[110px] sm:max-w-[140px] text-left" :class="{ 'flex-1': buttonClass?.includes('justify-between') }">
         {{ formatLabel(selectedFolderItem.name) }}
       </span>
       <ChevronDown
@@ -263,12 +285,13 @@ onBeforeUnmount(() => {
           >
           <button
             type="button"
-            class="p-1 rounded-lg bg-brand text-brand-fg hover:bg-brand-hover text-xs font-bold shrink-0 transition-colors"
+            class="p-1 rounded-lg bg-brand text-brand-fg hover:bg-brand-hover text-xs font-bold shrink-0 transition-colors disabled:opacity-50"
             title="追加"
-            :disabled="!newName.trim()"
+            :disabled="!newName.trim() || isSubmitting"
             @click="handleCreateNewFolder"
           >
-            <Check class="w-3.5 h-3.5" />
+            <RefreshCw v-if="isSubmitting" class="w-3.5 h-3.5 animate-spin" />
+            <Check v-else class="w-3.5 h-3.5" />
           </button>
           <button
             type="button"

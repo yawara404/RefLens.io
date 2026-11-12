@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import SiteInfoPage from '~/components/ui/SiteInfoPage.vue'
+import { useSeo } from '~/composables/useSeo'
 
-useHead({ title: 'プライバシーポリシー | RefLens.io' })
+useSeo({
+  title: 'プライバシーポリシー | RefLens.io',
+  description: 'RefLens.ioが取得・保存する情報、外部サービスへの送信、Cookieとログイン情報の扱いについてまとめています。',
+  path: '/privacy',
+})
 </script>
 
 <template>

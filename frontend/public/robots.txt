@@ -10,10 +10,12 @@ User-agent: *
 Allow: /RefLens.io/
 Allow: /RefLens.io/canvas
 Allow: /RefLens.io/view
+Allow: /RefLens.io/help
 Allow: /RefLens.io/about
 Allow: /RefLens.io/terms
 Allow: /RefLens.io/privacy
 Disallow: /RefLens.io/api/
 Disallow: /RefLens.io/account
+Disallow: /RefLens.io/board/
 
 Sitemap: https://art.wawa-app.me/RefLens.io/sitemap.xml

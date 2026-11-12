@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import SiteInfoPage from '~/components/ui/SiteInfoPage.vue'
+import { useSeo } from '~/composables/useSeo'
 
-useHead({ title: '利用上の注意 | RefLens.io' })
+useSeo({
+  title: '利用上の注意 | RefLens.io',
+  description: 'RefLens.ioを利用するときの注意事項。作品の権利、外部サービスとの関係、AI解析と公開環境の扱いについてまとめています。',
+  path: '/terms',
+})
 </script>
 
 <template>

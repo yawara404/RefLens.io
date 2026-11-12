@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, toRef } from 'vue'
-import { Folder, X, Check, Bookmark, Layers, RefreshCw } from 'lucide-vue-next'
+import { ref, computed, toRef, watch, nextTick } from 'vue'
+import { Folder, FolderPlus, X, Check, Bookmark, Layers, RefreshCw } from 'lucide-vue-next'
 import { useBoardStore } from '~/stores/boardStore'
 import { useToast } from '~/composables/useToast'
 import { useMediaUrl } from '~/composables/useMediaUrl'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import { useDialogA11y } from '~/composables/useDialogA11y'
+import { formatFolderLabel } from '~/utils/folders'
 
 const props = defineProps<{
   isOpen: boolean
@@ -24,9 +25,13 @@ const { resolveMediaUrl } = useMediaUrl()
 // Esc で閉じる / 背景スクロールを止める
 const { dialogRef } = useDialogA11y(toRef(props, 'isOpen'), () => emit('close'))
 
-const targetFolder = ref('All References')
+// 保存先モード: 'new' (新規フォルダ作成 - デフォルト) | 'existing' (既存フォルダ選択)
+const saveMode = ref<'new' | 'existing'>('new')
+const newFolderName = ref('')
+const selectedFolder = ref('All References')
 const targetScope = ref<'all' | 'selected'>('all')
 const isSaving = ref(false)
+const newFolderInputRef = ref<HTMLInputElement | null>(null)
 
 const hasSelection = computed(() => boardStore.selectedItemIds.length > 0)
 
@@ -44,9 +49,23 @@ const previewThumbs = computed(() => {
     .filter(Boolean)
 })
 
-function formatFolderLabel(name: string): string {
-  return name === 'All References' ? 'すべての資料' : name
-}
+// モーダルオープン時の初期化: デフォルトで新規フォルダモードにし、ボード名を初期値としてセット
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open) {
+      saveMode.value = 'new'
+      const baseTitle = boardStore.currentBoard?.title?.trim()
+      newFolderName.value = baseTitle || '新規フォルダ'
+      targetScope.value = hasSelection.value ? 'selected' : 'all'
+      nextTick(() => {
+        newFolderInputRef.value?.focus()
+        newFolderInputRef.value?.select()
+      })
+    }
+  },
+  { immediate: true }
+)
 
 async function handleSave() {
   if (!targetItems.value.length) {
@@ -54,11 +73,22 @@ async function handleSave() {
     return
   }
 
+  let folder = ''
+  if (saveMode.value === 'new') {
+    folder = newFolderName.value.trim()
+    if (!folder) {
+      toast.error('フォルダ名を入力してください')
+      newFolderInputRef.value?.focus()
+      return
+    }
+  } else {
+    folder = selectedFolder.value.trim() || 'All References'
+  }
+
   isSaving.value = true
   const itemIds = targetScope.value === 'selected' && hasSelection.value
     ? boardStore.selectedItemIds
     : [] // empty means all items on board
-  const folder = targetFolder.value || 'All References'
 
   const success = await boardStore.saveCanvasItemsToFolder(itemIds, folder)
   isSaving.value = false
@@ -78,8 +108,9 @@ async function handleSave() {
       @click.self="emit('close')"
     >
       <div
+        ref="dialogRef"
         class="w-full max-w-lg rounded-2xl border border-canvas-border bg-canvas-panel shadow-pop relative overflow-visible animate-scale-in"
-        ref="dialogRef" role="dialog"
+        role="dialog"
         aria-modal="true"
         aria-label="キャンバス上の資料を一括フォルダ保存"
       >
@@ -134,21 +165,75 @@ async function handleSave() {
             </div>
           </div>
 
-          <!-- 保存先フォルダ選択 -->
-          <div class="space-y-2 p-3 rounded-xl bg-canvas-sunken/60 border border-canvas-border relative z-20">
+          <!-- 保存先フォルダ選択 (デフォルト: 新規フォルダ作成) -->
+          <div class="space-y-3 p-3.5 rounded-2xl bg-canvas-sunken/60 border border-canvas-border relative z-20">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold text-ink flex items-center gap-1.5">
                 <Bookmark class="w-3.5 h-3.5 text-brand" />
                 <span>保存先フォルダ</span>
               </span>
-              <span class="text-[10px] text-ink-subtle">新規フォルダの作成も可能</span>
+              <span class="text-[10px] text-ink-subtle">
+                {{ saveMode === 'new' ? '新しいフォルダを自動生成' : '既存フォルダを選択' }}
+              </span>
             </div>
-            <FolderSelectDropdown
-              v-model="targetFolder"
-              button-class="w-full text-xs justify-between"
-              align="top"
-              placeholder="フォルダを選択..."
-            />
+
+            <!-- モード切替タブ: デフォルト新規フォルダ -->
+            <div class="grid grid-cols-2 gap-1 p-1 bg-canvas-card rounded-xl border border-canvas-border text-xs">
+              <button
+                type="button"
+                class="py-1.5 px-3 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all text-xs"
+                :class="saveMode === 'new'
+                  ? 'bg-brand text-brand-fg shadow-xs'
+                  : 'text-ink-muted hover:text-ink'"
+                @click="saveMode = 'new'"
+              >
+                <FolderPlus class="w-3.5 h-3.5" />
+                <span>新規フォルダを作成</span>
+              </button>
+              <button
+                type="button"
+                class="py-1.5 px-3 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all text-xs"
+                :class="saveMode === 'existing'
+                  ? 'bg-brand text-brand-fg shadow-xs'
+                  : 'text-ink-muted hover:text-ink'"
+                @click="saveMode = 'existing'"
+              >
+                <Folder class="w-3.5 h-3.5" />
+                <span>既存フォルダを選択</span>
+              </button>
+            </div>
+
+            <!-- A. 新規フォルダモード (デフォルト) -->
+            <div v-if="saveMode === 'new'" class="space-y-1.5 pt-0.5">
+              <div class="relative flex items-center">
+                <FolderPlus class="absolute left-3 w-4 h-4 text-brand pointer-events-none" />
+                <input
+                  ref="newFolderInputRef"
+                  v-model="newFolderName"
+                  type="text"
+                  maxlength="40"
+                  placeholder="新しいフォルダ名を入力..."
+                  class="w-full pl-9 pr-3 py-2 rounded-xl border border-canvas-border-strong bg-canvas-card text-xs font-semibold text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+                  @keydown.enter.prevent="handleSave"
+                >
+              </div>
+              <p class="text-[11px] text-ink-subtle px-0.5">
+                一括保存と同時にこのフォルダが作成され、キャンバスの資料が整理されます。
+              </p>
+            </div>
+
+            <!-- B. 既存フォルダモード -->
+            <div v-else class="space-y-1.5 pt-0.5">
+              <FolderSelectDropdown
+                v-model="selectedFolder"
+                button-class="w-full text-xs justify-between"
+                align="left"
+                placeholder="フォルダを選択..."
+              />
+              <p class="text-[11px] text-ink-subtle px-0.5">
+                選択した既存のフォルダにキャンバスの資料を追加・保存します。
+              </p>
+            </div>
           </div>
 
           <!-- プレビューサムネイルストリップ -->
@@ -185,12 +270,18 @@ async function handleSave() {
             <button
               type="button"
               class="px-4 py-2 rounded-xl bg-brand text-brand-fg hover:bg-brand-hover text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
-              :disabled="isSaving || !targetItems.length"
+              :disabled="isSaving || !targetItems.length || (saveMode === 'new' && !newFolderName.trim())"
               @click="handleSave"
             >
               <RefreshCw v-if="isSaving" class="w-3.5 h-3.5 animate-spin" />
               <Check v-else class="w-3.5 h-3.5" />
-              <span>{{ isSaving ? '保存中...' : `「${formatFolderLabel(targetFolder)}」に一括保存` }}</span>
+              <span v-if="isSaving">保存中...</span>
+              <span v-else-if="saveMode === 'new'">
+                「{{ newFolderName.trim() || '新規フォルダ' }}」を作成して一括保存
+              </span>
+              <span v-else>
+                「{{ formatFolderLabel(selectedFolder) }}」に一括保存
+              </span>
             </button>
           </div>
         </div>
@@ -198,4 +289,3 @@ async function handleSave() {
     </div>
   </Teleport>
 </template>
-

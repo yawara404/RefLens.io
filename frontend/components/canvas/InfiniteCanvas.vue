@@ -29,6 +29,8 @@ import {
 } from 'lucide-vue-next'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import type { CanvasItem } from '~/types'
+import { formatFolderLabel } from '~/utils/folders'
+import { isTypingTarget } from '~/utils/dom'
 import { useBoardStore } from '~/stores/boardStore'
 import { useHelpStore } from '~/stores/helpStore'
 import { useToast } from '~/composables/useToast'
@@ -39,7 +41,6 @@ import { useImageProcessor } from '~/composables/useImageProcessor'
 import { usePixiv } from '~/composables/usePixiv'
 import ReferenceItem from './ReferenceItem.vue'
 import CanvasItemMenu from './CanvasItemMenu.vue'
-import ColorPaletteBar from './ColorPaletteBar.vue'
 
 const props = defineProps<{ boardId: string }>()
 
@@ -84,11 +85,6 @@ let dragDistance = 0
 let dragStartClient = { x: 0, y: 0 }
 
 const { resolveMediaUrl } = useMediaUrl()
-
-function formatFolderLabel(name?: string | null): string {
-  if (!name || name === 'All References') return 'すべての資料'
-  return name
-}
 
 // キャンバスからブックマークブラウザ・フォルダへのドラッグ＆ドロップ連携
 const hoverTargetFolder = ref<string | null>(null)
@@ -585,12 +581,6 @@ function handleStartRotate(evt: PointerEvent, item: CanvasItem) {
 // ---------------------------------------------------------------
 // キーボードショートカット
 // ---------------------------------------------------------------
-function isTypingTarget(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null
-  if (!el) return false
-  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true
-  return !!el.isContentEditable
-}
 
 function onKeyDown(e: KeyboardEvent) {
   if (e.defaultPrevented || e.isComposing || document.querySelector('[aria-modal="true"]') || isTypingTarget(e.target)) return
@@ -847,8 +837,6 @@ const selectionBoxStyle = computed(() => {
     height: `${h}px`,
   }
 })
-
-const activePalette = computed(() => boardStore.activeItem?.ai_analysis?.palette || [])
 
 const backgroundClass = computed(() => {
   const theme = boardStore.currentBoard?.background_theme
@@ -1298,14 +1286,6 @@ watch(() => props.boardId, () => {
           </button>
         </div>
       </div>
-    </div>
-
-    <!-- 選択中アイテムのカラーチップバー（下部ツールバーと重ならないよう上に配置） -->
-    <div
-      v-if="activePalette.length > 0"
-      class="absolute bottom-16 sm:bottom-20 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-1.5rem)] z-20 pointer-events-auto overflow-x-auto no-scrollbar animate-slide-up whitespace-nowrap"
-    >
-      <ColorPaletteBar :palette="activePalette" :title="boardStore.activeItem?.caption" />
     </div>
 
     <!-- ズーム操作 / ホイールモード（右上配置にして下部メインドックとの重なりを防止） -->

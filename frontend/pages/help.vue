@@ -37,15 +37,12 @@ import {
   Upload,
 } from 'lucide-vue-next'
 import AppHeader from '~/components/ui/AppHeader.vue'
+import { useSeo } from '~/composables/useSeo'
 
-useHead({
+useSeo({
   title: '使い方・操作ガイド（ヘルプ） | RefLens.io',
-  meta: [
-    {
-      name: 'description',
-      content: 'RefLens.ioの基本機能、資料のブックマーク・フォルダ・タグ管理、無限キャンバスでの直感操作、pixiv連携、AI解析、キーボードショートカット一覧を詳しく解説します。'
-    }
-  ]
+  description: 'RefLens.ioの基本機能、資料のブックマーク・フォルダ・タグ管理、無限キャンバスでの直感操作、pixiv連携、AI解析、キーボードショートカット一覧を詳しく解説します。',
+  path: '/help',
 })
 
 const TOC_ITEMS = [
@@ -378,7 +375,7 @@ const SHORTCUT_GROUPS = [
             <div>
               <h3 class="text-xs font-bold text-brand uppercase tracking-wider mb-1.5">カラーパレット抽出・HEXワンタッチコピー</h3>
               <p>
-                画像から抽出された代表色がキャンバス下部にカラーチップバーとして表示されます。チップをクリックするだけで、16進数カラーコード（HEX）がクリップボードにコピーされ、イラスト制作ソフト（CLIP STUDIO PAINT、Photoshop、Procreate等）にすぐ貼り付けて使えます。
+                画像から抽出された代表色は、AI解析パネル（右側）の「抽出カラーパレット」に表示されます。色をクリックするだけで、16進数カラーコード（HEX）がクリップボードにコピーされ、イラスト制作ソフト（CLIP STUDIO PAINT、Photoshop、Procreate等）にすぐ貼り付けて使えます。
               </p>
             </div>
           </div>

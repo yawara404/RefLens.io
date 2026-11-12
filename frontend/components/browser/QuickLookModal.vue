@@ -18,6 +18,7 @@ import { useMediaUrl } from '~/composables/useMediaUrl'
 import { useImageProcessor } from '~/composables/useImageProcessor'
 import { useToast } from '~/composables/useToast'
 import { useDialogA11y } from '~/composables/useDialogA11y'
+import { isTypingTarget } from '~/utils/dom'
 
 const boardStore = useBoardStore()
 const toast = useToast()
@@ -158,12 +159,6 @@ async function handleTriggerAi() {
       isAnalyzing.value = false
     }, 3500)
   }
-}
-
-function isTypingTarget(target: EventTarget | null) {
-  const el = target as HTMLElement | null
-  if (!el) return false
-  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.isContentEditable
 }
 
 function onKeyDown(e: KeyboardEvent) {

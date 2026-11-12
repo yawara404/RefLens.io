@@ -7,6 +7,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { themeInitScript, useTheme } from '~/composables/useTheme'
 import { useHelpStore } from '~/stores/helpStore'
 import { useMobileNav } from '~/composables/useMobileNav'
+import { isTypingTarget } from '~/utils/dom'
 import ToastHost from '~/components/ui/ToastHost.vue'
 import KeyboardHelpModal from '~/components/ui/KeyboardHelpModal.vue'
 import PixivConnectDialog from '~/components/panel/PixivConnectDialog.vue'
@@ -33,12 +34,7 @@ function onGlobalKey(e: KeyboardEvent) {
     return
   }
 
-  const target = e.target as HTMLElement | null
-  if (target) {
-    const tag = target.tagName
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-    if (target.isContentEditable) return
-  }
+  if (isTypingTarget(e.target)) return
 
   if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
     e.preventDefault()
