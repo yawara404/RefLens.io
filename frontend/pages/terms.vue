@@ -10,7 +10,7 @@ useSeo({
 </script>
 
 <template>
-  <SiteInfoPage title="利用上の注意" updated="2026年10月7日">
+  <SiteInfoPage title="利用上の注意" updated="2026年11月12日">
     <p>RefLens.ioは参考資料の整理・閲覧を支援するツールです。利用する画像やリンクの権利、公開範囲、外部サービスの条件を確認して使用してください。</p>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">作品と外部サービス</h2>
@@ -18,7 +18,7 @@ useSeo({
     </section>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">AI解析</h2>
-      <p>AI解析は作品の利用許諾を判断する機能ではありません。Pixiv作品に明示的なAI学習禁止の記載がある場合は解析を停止します。記載がない場合でも、Danbooruで同じPixiv作品IDの掲載を確認できたときだけ解析します。Danbooruへの掲載は作者の許諾の証明ではありません。解析結果は誤ることがあります。</p>
+      <p>AI解析は作品の利用許諾を判断する機能ではありません。RefLens.ioのAI解析は、取り込んだ画像をモデルの学習（追加トレーニング）に利用しない、推論専用の情報解析（構図・光・ポーズ・衣装・配色の読み取りと自動タグ付け）です。取り込んだ作品はすべて解析の対象となり、作品側のAI学習禁止などの表記によって解析を停止することはありません。自動AIタグ付けはアカウント設定から停止できます。解析結果は誤ることがあります。</p>
     </section>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">ゲスト・公開環境</h2>

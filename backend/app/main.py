@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -6,7 +8,15 @@ from app.core.database import init_db, SessionLocal
 from app.models.models import User, Board, MediaItem, CanvasItem, AIAnalysis
 from app.routers import auth, boards, media, instagram, bookmarks, pixiv
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    seed_initial_demo_data()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Smart Infinite Canvas Reference Management for Concept Artists & Illustrators",
@@ -26,8 +36,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 # Static files for uploaded images
@@ -186,11 +196,6 @@ def seed_initial_demo_data():
         print(f"Seed demo data notice: {e}")
     finally:
         db.close()
-
-@app.on_event("startup")
-def on_startup():
-    init_db()
-    seed_initial_demo_data()
 
 @app.get("/")
 def health_check():

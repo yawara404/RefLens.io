@@ -505,6 +505,27 @@ export const useBoardStore = defineStore('board', {
       }
     },
 
+    async deleteBookmarks(bookmarkIds: string[]) {
+      if (!bookmarkIds.length) return false
+      try {
+        await $fetch(this.api('/bookmarks/batch'), {
+          method: 'DELETE',
+          body: { bookmark_ids: bookmarkIds },
+        })
+        const idSet = new Set(bookmarkIds)
+        this.bookmarks = this.bookmarks.filter(b => !idSet.has(b.id))
+        if (this.quickLookItem && idSet.has(this.quickLookItem.id)) {
+          this.quickLookItem = null
+        }
+        await this.fetchFolders()
+        return true
+      } catch (e) {
+        console.error('Batch delete bookmarks failed:', e)
+        useToast().error('ブックマークの一括削除に失敗しました', (e as any)?.data?.detail || (e as any)?.message)
+        return false
+      }
+    },
+
     async updateBookmarkTags(bookmarkId: string, tags: string[]) {
       try {
         const res = await $fetch<{ success: boolean; tags: string[] }>(

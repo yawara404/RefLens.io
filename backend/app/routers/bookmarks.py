@@ -53,6 +53,9 @@ class BatchUpdateFolderRequest(BaseModel):
     bookmark_ids: List[str]
     folder_name: str
 
+class BatchDeleteBookmarksRequest(BaseModel):
+    bookmark_ids: List[str]
+
 class FolderUpdateRequest(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
@@ -441,7 +444,7 @@ async def add_bookmark(
         user_id=user.id,
         board_id=payload.board_id,
         source_type=meta.get("source_type", "web_bookmark"),
-        ai_analysis_policy=meta.get("ai_analysis_policy", "unknown") if meta.get("source_type") == "pixiv" else "allowed",
+        ai_analysis_policy=meta.get("ai_analysis_policy", "allowed"),
         title=payload.title or meta.get("title"),
         original_file_name=meta.get("title"),
         author_name=meta.get("author_name"),
@@ -615,6 +618,26 @@ def batch_update_bookmark_folder(
     ).update({MediaItem.folder_name: payload.folder_name}, synchronize_session=False)
     db.commit()
     return {"count": updated, "message": f"{updated} items moved to {payload.folder_name}"}
+
+@router.post("/batch/delete")
+@router.delete("/batch")
+def batch_delete_bookmarks(
+    payload: BatchDeleteBookmarksRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """複数のブックマークをまとめて削除する。"""
+    if not payload.bookmark_ids:
+        return {"count": 0, "message": "No items provided"}
+
+    media_items = db.query(MediaItem).filter(
+        MediaItem.id.in_(payload.bookmark_ids),
+        MediaItem.user_id == user.id
+    ).all()
+    for media in media_items:
+        db.delete(media)
+    db.commit()
+    return {"count": len(media_items), "message": f"{len(media_items)} items deleted"}
 
 @router.put("/{bookmark_id}/folder")
 def update_bookmark_folder(

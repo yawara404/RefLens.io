@@ -10,7 +10,7 @@ useSeo({
 </script>
 
 <template>
-  <SiteInfoPage title="プライバシーポリシー" updated="2026年10月7日">
+  <SiteInfoPage title="プライバシーポリシー" updated="2026年11月12日">
     <p>このページは、現行のRefLens.ioで扱うデータと、その利用方法を説明します。公開運用に必要な運営者情報・問い合わせ窓口は、運営者による確認が必要です。</p>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">取得・保存する情報</h2>
@@ -23,7 +23,7 @@ useSeo({
     </section>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">外部サービスとの通信</h2>
-      <p>Pixiv作品の取得にはPixivとの通信が発生します。Pixiv作品のAI解析可否を判定する際は作品IDをDanbooruへ照会します。AI解析の設定によっては、画像がGoogle Gemini APIへ送信される場合があります。ローカルのOllamaまたは画像特徴量による解析を使用する場合もあります。画面表示時にはGoogle Fonts等の外部リソースを読み込む場合があります。</p>
+      <p>Pixiv作品の取得にはPixivとの通信が発生します。AI解析の設定によっては、画像がGoogle Gemini APIへ送信される場合があります。ローカルのOllamaまたは画像特徴量による解析を使用する場合もあります。画面表示時にはGoogle Fonts等の外部リソースを読み込む場合があります。</p>
     </section>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">保存と削除</h2>

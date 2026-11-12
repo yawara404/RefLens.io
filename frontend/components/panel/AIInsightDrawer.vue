@@ -36,15 +36,14 @@ const isReanalyzing = ref(false)
 const copiedHex = ref<string | null>(null)
 const { resolveMediaUrl } = useMediaUrl()
 
-const pixivPolicy = computed(() => props.item?.media?.source_type === 'pixiv'
-  ? (props.item.media.ai_analysis_policy || 'unknown')
-  : 'allowed')
-const analysis = computed(() => pixivPolicy.value === 'allowed' ? props.item?.ai_analysis : null)
+// AI解析は全資料が対象（pixiv作品も作者の表記で停止しない）ため、
+// ai_analysis_policy の値で表示・再解析を制限しない。
+const analysis = computed(() => props.item?.ai_analysis)
 
 const resolvedImageUrl = computed(() => resolveMediaUrl(props.item?.media?.file_path))
 
 async function handleReanalyze() {
-  if (!props.item?.media_item_id || pixivPolicy.value === 'blocked') return
+  if (!props.item?.media_item_id) return
   isReanalyzing.value = true
   try {
     if (await boardStore.reanalyzeActiveItem()) toast.success('AI解析を更新しました')
@@ -117,7 +116,7 @@ const SECTIONS = [
           :class="isReanalyzing ? 'animate-spin' : ''"
           title="AI解析を再実行"
           aria-label="AI解析を再実行"
-          :disabled="isReanalyzing || !props.item || pixivPolicy === 'blocked'"
+          :disabled="isReanalyzing || !props.item"
           @click="handleReanalyze"
         >
           <RefreshCw class="w-4 h-4" />
@@ -147,23 +146,8 @@ const SECTIONS = [
         </div>
       </div>
 
-      <div v-if="pixivPolicy === 'blocked'" class="rounded-xl border border-canvas-border bg-canvas-card p-4 text-xs text-ink-muted leading-relaxed">
-        作者がAI学習禁止を明示しているため、このPixiv作品はAI解析しません。
-      </div>
-      <div v-else-if="pixivPolicy === 'unlisted'" class="rounded-xl border border-canvas-border bg-canvas-card p-4 space-y-3 text-xs text-ink-muted leading-relaxed">
-        Danbooruで同じPixiv作品IDの掲載を確認できないため、AI解析は停止しています。
-        <button type="button" class="block rounded-lg bg-brand px-3 py-1.5 text-brand-fg" @click="handleReanalyze">
-          掲載を再確認して解析
-        </button>
-      </div>
-      <div v-else-if="pixivPolicy === 'unknown'" class="rounded-xl border border-canvas-border bg-canvas-card p-4 space-y-3 text-xs text-ink-muted leading-relaxed">
-        Pixiv作品情報またはDanbooru掲載を確認できないため、AI解析は停止しています。
-        <button type="button" class="block rounded-lg bg-brand px-3 py-1.5 text-brand-fg" @click="handleReanalyze">
-          条件を再確認して解析
-        </button>
-      </div>
       <!-- 解析中 -->
-      <div v-else-if="isReanalyzing" class="py-14 flex flex-col items-center justify-center gap-3">
+      <div v-if="isReanalyzing" class="py-14 flex flex-col items-center justify-center gap-3">
         <div class="w-7 h-7 rounded-full border-2 border-brand border-t-transparent animate-spin" />
         <p class="text-[11px] text-ink-muted font-mono">視覚構造を解析中...</p>
       </div>

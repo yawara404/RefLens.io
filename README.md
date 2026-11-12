@@ -200,14 +200,14 @@ AIは、資料の構図・光・ポーズ・衣装・配色を読み取るため
 自動選択でGeminiの設定がある場合も、画像がGoogleへ送信される可能性があります。Ollamaを別ホストへ向けた場合は、そのホストに画像が送信されます。
 
 <details>
-<summary><strong>解析対象と、現行実装の注意点</strong></summary>
+<summary><strong>解析対象について</strong></summary>
 
 - 自分でアップロードした画像やpixivから取り込んだ作品は、自動AIタグ付けの対象です。アカウント設定による停止と、手動での再解析に対応しています。
-- Instagram取り込みも共通のURL取り込み処理を経由するため、現行コードでは自動AIタグ付けの対象になります。旧READMEにあった「InstagramはAI解析しない」という説明は現行実装と一致していません。
+- Instagram取り込みも共通のURL取り込み処理を経由するため、自動AIタグ付けの対象になります。
+- AI解析は、取り込んだ画像をモデルの学習に利用しない推論専用の情報解析です。[`pixiv_ai_policy.py`](backend/app/services/pixiv_ai_policy.py) は解析可否を常に `allowed` として返し、[`media.py`](backend/app/routers/media.py) の解析処理も作者の拒否表記による停止を行いません。
 - AI解析は作品の利用許諾を判断する機能ではありません。資料の利用時は、作者の権利と取得元サービスの利用条件を確認してください。
-- **pixiv解析の説明には差分があります。** 現行の [`pixiv_ai_policy.py`](backend/app/services/pixiv_ai_policy.py) は解析可否を `allowed` として返し、[`media.py`](backend/app/routers/media.py) の解析処理も作者の拒否表記による停止を行いません。サイト内の利用上の注意に記載された「拒否表記・Danbooru掲載状況で解析を制限する」という説明とは一致していません。
 
-サイト内の説明は [利用上の注意](frontend/pages/terms.vue) / [プライバシーポリシー](frontend/pages/privacy.vue) を参照してください。上記の差分があるため、これらの記載を現行実装による解析停止の保証として扱わないでください。
+サイト内の説明は [利用上の注意](frontend/pages/terms.vue) / [プライバシーポリシー](frontend/pages/privacy.vue) を参照してください。いずれもこの現行実装に合わせて記載しています。
 
 </details>
 

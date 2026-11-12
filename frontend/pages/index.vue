@@ -28,6 +28,9 @@ import {
   X,
   Loader2,
   Tag,
+  Trash2,
+  FolderInput,
+  CheckSquare2,
 } from 'lucide-vue-next'
 import AppHeader from '~/components/ui/AppHeader.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
@@ -190,6 +193,22 @@ function restoreViewMode(): 'grid' | 'list' {
 }
 
 const viewMode = ref<'grid' | 'list'>(restoreViewMode())
+
+/** ライブラリの複数選択（チェックボックス / Ctrl・⌘クリック / Shift+クリック） */
+const selectedBookmarkIds = ref<Set<string>>(new Set())
+const selectionAnchorId = ref<string | null>(null)
+const isSelectionMode = ref(false)
+const isBulkBusy = ref(false)
+const isBulkDeleteConfirming = ref(false)
+const bulkMoveTarget = ref('')
+
+const selectedBookmarkCount = computed(() => selectedBookmarkIds.value.size)
+const selectedBookmarkIdList = computed(() => [...selectedBookmarkIds.value])
+const allVisibleSelected = computed(
+  () =>
+    visibleBookmarks.value.length > 0 &&
+    visibleBookmarks.value.every(b => selectedBookmarkIds.value.has(b.id)),
+)
 
 const showNewFolder = ref(false)
 const newFolderName = ref('')
@@ -751,9 +770,16 @@ async function onFolderBookmarkDrop(folder: FolderItem, event: DragEvent) {
   const bookmarkId = event.dataTransfer?.getData('application/reflens-bookmark-id')
   if (!bookmarkId) return
 
-  const success = await boardStore.moveBookmarksFolder([bookmarkId], folder.name)
+  const ids = (selectedBookmarkIds.value.has(bookmarkId) && selectedBookmarkIds.value.size > 1)
+    ? selectedBookmarkIdList.value
+    : [bookmarkId]
+
+  const success = await boardStore.moveBookmarksFolder(ids, folder.name)
   if (success) {
-    toast.success(`「${formatFolderLabel(folder.name)}」に移動しました`)
+    toast.success(`${ids.length} 件を「${formatFolderLabel(folder.name)}」に移動しました`)
+    if (selectedBookmarkIds.value.has(bookmarkId)) {
+      clearSelection()
+    }
   }
 }
 
@@ -855,14 +881,196 @@ async function handleDeleteBookmark(item: BookmarkItem) {
   if (deleted) toast.success('ライブラリから削除しました', item.title)
 }
 
+/* ------------------------------------------------------------------ *
+ * ライブラリの複数選択
+ * ------------------------------------------------------------------ */
+
+function isBookmarkSelected(id: string) {
+  return selectedBookmarkIds.value.has(id)
+}
+
+function commitSelection(ids: Iterable<string>) {
+  selectedBookmarkIds.value = new Set(ids)
+  if (!selectedBookmarkIds.value.size) {
+    selectionAnchorId.value = null
+    isSelectionMode.value = false
+    isBulkDeleteConfirming.value = false
+  }
+}
+
+function clearSelection() {
+  commitSelection([])
+  bulkMoveTarget.value = ''
+}
+
+function toggleSelectionMode() {
+  if (isSelectionMode.value) {
+    clearSelection()
+    return
+  }
+  isSelectionMode.value = true
+}
+
+function toggleBookmarkSelection(item: BookmarkItem) {
+  const next = new Set(selectedBookmarkIds.value)
+  if (next.has(item.id)) {
+    next.delete(item.id)
+    if (selectionAnchorId.value === item.id) selectionAnchorId.value = null
+  } else {
+    next.add(item.id)
+    selectionAnchorId.value = item.id
+    isSelectionMode.value = true
+  }
+  isBulkDeleteConfirming.value = false
+  commitSelection(next)
+}
+
+function selectBookmarkRange(targetId: string) {
+  const ids = visibleBookmarks.value.map(b => b.id)
+  const from = ids.indexOf(selectionAnchorId.value || targetId)
+  const to = ids.indexOf(targetId)
+  if (from === -1 || to === -1) {
+    const item = visibleBookmarks.value.find(b => b.id === targetId)
+    if (item) toggleBookmarkSelection(item)
+    return
+  }
+
+  const next = new Set(selectedBookmarkIds.value)
+  const start = Math.min(from, to)
+  const end = Math.max(from, to)
+  for (let i = start; i <= end; i++) next.add(ids[i])
+  if (!selectionAnchorId.value) selectionAnchorId.value = targetId
+  isSelectionMode.value = true
+  isBulkDeleteConfirming.value = false
+  commitSelection(next)
+}
+
+/** カードの通常クリック（選択モード中は選択、修飾キー付きなら複数選択） */
+function handleBookmarkActivate(item: BookmarkItem, event: MouseEvent | KeyboardEvent) {
+  if (activeSection.value !== 'library') {
+    boardStore.openQuickLook(item)
+    return
+  }
+
+  const isAdditive = event.shiftKey || event.metaKey || event.ctrlKey
+  if (isSelectionMode.value || isAdditive) {
+    if (event.shiftKey) selectBookmarkRange(item.id)
+    else toggleBookmarkSelection(item)
+    return
+  }
+
+  boardStore.openQuickLook(item)
+}
+
+function selectAllVisibleBookmarks() {
+  if (allVisibleSelected.value) {
+    clearSelection()
+    return
+  }
+  selectedBookmarkIds.value = new Set(visibleBookmarks.value.map(b => b.id))
+  selectionAnchorId.value = visibleBookmarks.value[0]?.id ?? null
+  isSelectionMode.value = true
+  isBulkDeleteConfirming.value = false
+}
+
+async function handleBulkMove() {
+  const folderName = bulkMoveTarget.value
+  if (!folderName) return
+  if (!requireAuth('資料の移動')) return
+
+  const ids = selectedBookmarkIdList.value
+  if (!ids.length) return
+  isBulkBusy.value = true
+  try {
+    const moved = await boardStore.moveBookmarksFolder(ids, folderName)
+    if (moved) {
+      toast.success(`${ids.length} 件のフォルダを変更しました`, formatFolderLabel(folderName))
+      clearSelection()
+    }
+  } finally {
+    isBulkBusy.value = false
+    bulkMoveTarget.value = ''
+  }
+}
+
+async function handleBulkPlaceOnBoard() {
+  if (!requireAuth('キャンバスへの配置')) return
+
+  const ids = selectedBookmarkIdList.value
+  if (!ids.length) return
+  isBulkBusy.value = true
+  try {
+    if (!boardStore.currentBoard) {
+      const board = await boardStore.loadFirstBoard()
+      if (!board) {
+        toast.error('キャンバスボードがありません')
+        return
+      }
+    }
+    const boardId = boardStore.currentBoard?.id
+    for (const id of ids) {
+      await boardStore.placeBookmarkOnBoard(id)
+    }
+    if (boardId) {
+      toast.success(`${ids.length} 件をキャンバスに配置しました`)
+      await navigateTo(`/board/${boardId}`)
+    }
+  } finally {
+    isBulkBusy.value = false
+  }
+}
+
+async function handleBulkDelete() {
+  if (!requireAuth('資料の削除')) return
+
+  const ids = selectedBookmarkIdList.value
+  if (!ids.length) return
+  isBulkBusy.value = true
+  try {
+    const deleted = await boardStore.deleteBookmarks(ids)
+    if (deleted) {
+      toast.success(`${ids.length} 件の資料を削除しました`)
+      clearSelection()
+    }
+  } finally {
+    isBulkBusy.value = false
+    isBulkDeleteConfirming.value = false
+  }
+}
+
+/** 選択中の資料がフィルタで非表示になったら選択から外す */
+watch(visibleBookmarks, (list) => {
+  if (!selectedBookmarkIds.value.size) return
+  const visibleIds = new Set(list.map(b => b.id))
+  const next = [...selectedBookmarkIds.value].filter(id => visibleIds.has(id))
+  if (next.length !== selectedBookmarkIds.value.size) commitSelection(next)
+})
+
+watch(activeSection, (section) => {
+  if (section !== 'library') clearSelection()
+})
+
 function onDocumentClickForSuggest(e: MouseEvent) {
   if (searchContainerRef.value && !searchContainerRef.value.contains(e.target as Node)) {
     isSuggestOpen.value = false
   }
 }
 
+function onGlobalKeyDown(e: KeyboardEvent) {
+  const isInput = (e.target as HTMLElement)?.matches('input, textarea, select, [contenteditable="true"]')
+  if (e.key === 'Escape' && selectedBookmarkIds.value.size > 0) {
+    clearSelection()
+    return
+  }
+  if (!isInput && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a' && activeSection.value === 'library') {
+    e.preventDefault()
+    selectAllVisibleBookmarks()
+  }
+}
+
 onMounted(async () => {
   document.addEventListener('click', onDocumentClickForSuggest)
+  document.addEventListener('keydown', onGlobalKeyDown)
   restoreFolderOrder()
   restoreFolderSortOrder()
   await Promise.all([boardStore.fetchBookmarks(), boardStore.fetchFolders()])
@@ -872,6 +1080,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocumentClickForSuggest)
+  document.removeEventListener('keydown', onGlobalKeyDown)
 })
 </script>
 
@@ -2101,6 +2310,25 @@ onBeforeUnmount(() => {
                     <List class="w-3.5 h-3.5" />
                   </button>
                 </div>
+
+                <button
+                  type="button"
+                  class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer"
+                  :class="isSelectionMode || selectedBookmarkCount > 0
+                    ? 'bg-brand text-brand-fg border-brand shadow-sm font-bold'
+                    : 'bg-canvas-bg text-ink border-canvas-border-strong hover:bg-canvas-hover'"
+                  :aria-pressed="isSelectionMode"
+                  title="複数選択モード（Shift+クリックで範囲選択、Ctrl/⌘クリックで個別選択も可能）"
+                  @click="toggleSelectionMode"
+                >
+                  <CheckSquare2 class="w-3.5 h-3.5" />
+                  <span class="hidden sm:inline">
+                    {{ selectedBookmarkCount > 0 ? `${selectedBookmarkCount}件選択中` : (isSelectionMode ? '選択終了' : '複数選択') }}
+                  </span>
+                  <span v-if="selectedBookmarkCount > 0" class="sm:hidden font-mono">
+                    {{ selectedBookmarkCount }}
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -2333,14 +2561,41 @@ onBeforeUnmount(() => {
                 tabindex="0"
                 role="button"
                 draggable="true"
-                :aria-label="`${b.title} の詳細プレビューを開く`"
-                class="group relative flex flex-col rounded-xl bg-canvas-card border border-canvas-border transition-colors cursor-grab active:cursor-grabbing hover:border-brand/50 focus-visible:border-brand"
+                :aria-label="isSelectionMode
+                  ? `${b.title} の選択を切り替え`
+                  : `${b.title} の詳細プレビューを開く`"
+                :aria-pressed="activeSection === 'library' ? isBookmarkSelected(b.id) : undefined"
+                :class="[
+                  'group relative flex flex-col rounded-xl bg-canvas-card border transition-colors cursor-grab active:cursor-grabbing focus-visible:border-brand',
+                  isBookmarkSelected(b.id)
+                    ? 'border-brand ring-2 ring-brand/40 bg-brand-soft/20'
+                    : 'border-canvas-border hover:border-brand/50',
+                ]"
                 @dragstart="onBookmarkDragStart($event, b)"
-                @click="boardStore.openQuickLook(b)"
-                @keydown.enter.self.prevent="boardStore.openQuickLook(b)"
-                @keydown.space.self.prevent="boardStore.openQuickLook(b)"
+                @click="handleBookmarkActivate(b, $event)"
+                @keydown.enter.self.prevent="handleBookmarkActivate(b, $event)"
+                @keydown.space.self.prevent="handleBookmarkActivate(b, $event)"
               >
                 <div class="relative aspect-square bg-canvas-sunken rounded-t-xl overflow-hidden">
+                  <!-- 複数選択チェックボックス -->
+                  <button
+                    v-if="activeSection === 'library'"
+                    type="button"
+                    class="absolute top-2 right-10 z-20 w-6 h-6 rounded-md border flex items-center justify-center transition-all"
+                    :class="[
+                      isBookmarkSelected(b.id)
+                        ? 'bg-brand border-brand text-brand-fg'
+                        : 'bg-canvas-panel/90 border-canvas-border-strong text-transparent hover:border-brand',
+                      isSelectionMode || isBookmarkSelected(b.id)
+                        ? 'opacity-100'
+                        : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                    ]"
+                    :aria-label="isBookmarkSelected(b.id) ? `${b.title} の選択を解除` : `${b.title} を選択`"
+                    :aria-pressed="isBookmarkSelected(b.id)"
+                    @click.stop="toggleBookmarkSelection(b)"
+                  >
+                    <Check v-if="isBookmarkSelected(b.id)" class="w-4 h-4" />
+                  </button>
                   <img
                     :src="resolveThumbnail(b.file_path)"
                     :alt="b.title"
@@ -2453,13 +2708,40 @@ onBeforeUnmount(() => {
                 tabindex="0"
                 role="button"
                 draggable="true"
-                :aria-label="`${b.title} の詳細プレビューを開く`"
-                class="group relative flex items-center gap-3 p-2.5 rounded-xl bg-canvas-card border border-canvas-border hover:border-brand focus-visible:border-brand cursor-grab active:cursor-grabbing transition-colors"
+                :aria-label="isSelectionMode
+                  ? `${b.title} の選択を切り替え`
+                  : `${b.title} の詳細プレビューを開く`"
+                :aria-pressed="activeSection === 'library' ? isBookmarkSelected(b.id) : undefined"
+                :class="[
+                  'group relative flex items-center gap-3 p-2.5 rounded-xl bg-canvas-card border cursor-grab active:cursor-grabbing transition-colors focus-visible:border-brand',
+                  isBookmarkSelected(b.id)
+                    ? 'border-brand ring-2 ring-brand/40 bg-brand-soft/20'
+                    : 'border-canvas-border hover:border-brand',
+                ]"
                 @dragstart="onBookmarkDragStart($event, b)"
-                @click="boardStore.openQuickLook(b)"
-                @keydown.enter.self.prevent="boardStore.openQuickLook(b)"
-                @keydown.space.self.prevent="boardStore.openQuickLook(b)"
+                @click="handleBookmarkActivate(b, $event)"
+                @keydown.enter.self.prevent="handleBookmarkActivate(b, $event)"
+                @keydown.space.self.prevent="handleBookmarkActivate(b, $event)"
               >
+                <!-- 複数選択チェックボックス -->
+                <button
+                  v-if="activeSection === 'library'"
+                  type="button"
+                  class="shrink-0 w-6 h-6 rounded-md border flex items-center justify-center transition-all"
+                  :class="[
+                    isBookmarkSelected(b.id)
+                      ? 'bg-brand border-brand text-brand-fg'
+                      : 'bg-canvas-panel border-canvas-border-strong text-transparent hover:border-brand',
+                    isSelectionMode || isBookmarkSelected(b.id)
+                      ? 'opacity-100'
+                      : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                  ]"
+                  :aria-label="isBookmarkSelected(b.id) ? `${b.title} の選択を解除` : `${b.title} を選択`"
+                  :aria-pressed="isBookmarkSelected(b.id)"
+                  @click.stop="toggleBookmarkSelection(b)"
+                >
+                  <Check v-if="isBookmarkSelected(b.id)" class="w-4 h-4" />
+                </button>
                 <img
                   :src="resolveThumbnail(b.file_path)"
                   :alt="b.title"
@@ -2562,6 +2844,103 @@ onBeforeUnmount(() => {
         </div>
         </template>
       </main>
+    </div>
+
+    <!-- ライブラリ複数選択の一括アクションバー（スクロール追従フローティングドック） -->
+    <div
+      v-if="activeSection === 'library' && selectedBookmarkCount > 0"
+      class="fixed bottom-4 sm:bottom-6 inset-x-0 z-40 flex justify-center px-3 sm:px-4 pointer-events-none pb-safe"
+    >
+      <div
+        class="pointer-events-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 floating-bar px-3 sm:px-4 py-2 rounded-2xl shadow-pop animate-slide-up max-w-full border border-brand/40 bg-canvas-panel/95 backdrop-blur-md"
+        role="toolbar"
+        aria-label="選択した資料の一括操作"
+      >
+        <span class="text-xs font-bold text-brand flex items-center gap-1.5 shrink-0" aria-live="polite">
+          <CheckSquare2 class="w-4 h-4" />
+          {{ selectedBookmarkCount }} 件選択中
+        </span>
+
+        <button
+          type="button"
+          class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-canvas-bg border border-canvas-border-strong text-ink hover:bg-canvas-hover transition-colors"
+          @click="selectAllVisibleBookmarks"
+        >
+          {{ allVisibleSelected ? '選択を解除' : 'すべて選択' }}
+        </button>
+
+        <div class="h-4 w-px bg-canvas-border hidden sm:block" />
+
+        <template v-if="!isBulkDeleteConfirming">
+          <label class="relative flex items-center shrink-0">
+            <FolderInput class="absolute left-2.5 w-3.5 h-3.5 text-brand pointer-events-none" />
+            <select
+              v-model="bulkMoveTarget"
+              class="appearance-none bg-canvas-bg border border-canvas-border-strong rounded-lg pl-8 pr-7 py-1.5 text-[11px] font-semibold text-ink focus:outline-none focus:border-brand cursor-pointer disabled:opacity-50 max-w-[170px]"
+              aria-label="選択した資料の移動先フォルダ"
+              :disabled="isBulkBusy"
+              @change="handleBulkMove"
+            >
+              <option value="">フォルダへ移動...</option>
+              <option v-for="folder in boardStore.folders" :key="folder.name" :value="folder.name">
+                {{ formatFolderLabel(folder.name) }}
+              </option>
+            </select>
+            <ChevronDown class="absolute right-2 w-3.5 h-3.5 text-ink-muted pointer-events-none" />
+          </label>
+
+          <button
+            type="button"
+            class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-brand text-brand-fg hover:bg-brand-hover disabled:opacity-50 transition-colors flex items-center gap-1 shrink-0 shadow-sm"
+            :disabled="isBulkBusy"
+            @click="handleBulkPlaceOnBoard"
+          >
+            <Layers class="w-3.5 h-3.5" />
+            キャンバスへ
+          </button>
+
+          <button
+            type="button"
+            class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-danger-soft/70 text-danger hover:bg-danger-soft disabled:opacity-50 transition-colors flex items-center gap-1 shrink-0"
+            :disabled="isBulkBusy"
+            @click="isBulkDeleteConfirming = true"
+          >
+            <Trash2 class="w-3.5 h-3.5" />
+            削除
+          </button>
+
+          <button
+            type="button"
+            class="px-2 py-1.5 rounded-lg text-[11px] font-semibold text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors flex items-center gap-1 shrink-0"
+            @click="clearSelection"
+          >
+            <X class="w-3.5 h-3.5" />
+            解除
+          </button>
+        </template>
+
+        <template v-else>
+          <span class="text-[11px] font-semibold text-danger shrink-0">
+            {{ selectedBookmarkCount }} 件をライブラリから削除しますか？
+          </span>
+          <button
+            type="button"
+            class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-canvas-bg border border-canvas-border-strong text-ink hover:bg-canvas-hover transition-colors shrink-0"
+            :disabled="isBulkBusy"
+            @click="isBulkDeleteConfirming = false"
+          >
+            キャンセル
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-danger text-white hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0 shadow-sm"
+            :disabled="isBulkBusy"
+            @click="handleBulkDelete"
+          >
+            {{ isBulkBusy ? '削除中...' : '削除する' }}
+          </button>
+        </template>
+      </div>
     </div>
 
     <QuickLookModal />
