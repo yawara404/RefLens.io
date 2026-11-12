@@ -2577,18 +2577,15 @@ onBeforeUnmount(() => {
                 @keydown.space.self.prevent="handleBookmarkActivate(b, $event)"
               >
                 <div class="relative aspect-square bg-canvas-sunken rounded-t-xl overflow-hidden">
-                  <!-- 複数選択チェックボックス -->
+                  <!-- 複数選択チェックボックス（選択モード中 または 選択中のみ表示） -->
                   <button
-                    v-if="activeSection === 'library'"
+                    v-if="activeSection === 'library' && (isSelectionMode || selectedBookmarkCount > 0)"
                     type="button"
-                    class="absolute top-2 right-10 z-20 w-6 h-6 rounded-md border flex items-center justify-center transition-all"
+                    class="absolute top-2 right-10 z-20 w-6 h-6 rounded-md border flex items-center justify-center transition-all animate-scale-in"
                     :class="[
                       isBookmarkSelected(b.id)
-                        ? 'bg-brand border-brand text-brand-fg'
-                        : 'bg-canvas-panel/90 border-canvas-border-strong text-transparent hover:border-brand',
-                      isSelectionMode || isBookmarkSelected(b.id)
-                        ? 'opacity-100'
-                        : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                        ? 'bg-brand border-brand text-brand-fg opacity-100 shadow-sm'
+                        : 'bg-canvas-panel/90 border-canvas-border-strong text-transparent hover:border-brand opacity-90',
                     ]"
                     :aria-label="isBookmarkSelected(b.id) ? `${b.title} の選択を解除` : `${b.title} を選択`"
                     :aria-pressed="isBookmarkSelected(b.id)"
@@ -2723,18 +2720,15 @@ onBeforeUnmount(() => {
                 @keydown.enter.self.prevent="handleBookmarkActivate(b, $event)"
                 @keydown.space.self.prevent="handleBookmarkActivate(b, $event)"
               >
-                <!-- 複数選択チェックボックス -->
+                <!-- 複数選択チェックボックス（選択モード中 または 選択中のみ表示） -->
                 <button
-                  v-if="activeSection === 'library'"
+                  v-if="activeSection === 'library' && (isSelectionMode || selectedBookmarkCount > 0)"
                   type="button"
-                  class="shrink-0 w-6 h-6 rounded-md border flex items-center justify-center transition-all"
+                  class="shrink-0 w-6 h-6 rounded-md border flex items-center justify-center transition-all animate-scale-in"
                   :class="[
                     isBookmarkSelected(b.id)
-                      ? 'bg-brand border-brand text-brand-fg'
-                      : 'bg-canvas-panel border-canvas-border-strong text-transparent hover:border-brand',
-                    isSelectionMode || isBookmarkSelected(b.id)
-                      ? 'opacity-100'
-                      : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                      ? 'bg-brand border-brand text-brand-fg opacity-100 shadow-sm'
+                      : 'bg-canvas-panel border-canvas-border-strong text-transparent hover:border-brand opacity-90',
                   ]"
                   :aria-label="isBookmarkSelected(b.id) ? `${b.title} の選択を解除` : `${b.title} を選択`"
                   :aria-pressed="isBookmarkSelected(b.id)"

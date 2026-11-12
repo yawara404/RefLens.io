@@ -7,7 +7,6 @@ import {
   Loader2,
   RefreshCw,
   Edit2,
-  Folder,
   Search,
   Sparkles,
   X,
@@ -225,18 +224,6 @@ onMounted(init)
           >
             <span>DEMO MODE</span>
           </div>
-
-          <!-- 一括フォルダセーブボタン（キャンバス離脱前のワンクリック保存） -->
-          <button
-            v-if="boardStore.items.length > 0"
-            type="button"
-            class="pointer-events-auto floating-bar px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-bold text-ink hover:text-brand transition-colors shrink-0 shadow-sm whitespace-nowrap"
-            title="キャンバス上の資料を一括でフォルダに保存"
-            @click="handleOpenSaveModal"
-          >
-            <Folder class="w-3.5 h-3.5 text-brand shrink-0" />
-            <span class="hidden sm:inline">一括保存</span>
-          </button>
         </div>
 
         <!-- 下部メインドック（w-max を指定してボタン文字の縦折り返しを完全防止） -->
@@ -248,7 +235,7 @@ onMounted(init)
             @open-pixiv="isPixivModalOpen = true"
             @open-instagram="isInstagramModalOpen = true"
             @open-insight="handleOpenInsight(boardStore.activeItem)"
-            @open-save-modal="isSaveModalOpen = true"
+            @open-save-modal="handleOpenSaveModal"
           />
         </div>
       </div>
