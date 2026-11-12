@@ -1,8 +1,0 @@
-file '/Users/it262148/RefLens.io/docs/video/hl2026/pixiv-v2/part-0.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/pixiv-v2/part-1.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/pixiv-v2/part-2.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/pixiv-v2/part-3.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/pixiv-v2/part-4.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/pixiv-v2/part-5.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/pixiv-v2/part-6.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/pixiv-v2/part-end.mp4'

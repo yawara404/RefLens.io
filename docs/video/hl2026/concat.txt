@@ -1,5 +1,0 @@
-file '/Users/it262148/RefLens.io/docs/video/hl2026/01_landing.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/02_library.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/03_canvas_pan_zoom.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/04_canvas_arrange.mp4'
-file '/Users/it262148/RefLens.io/docs/video/hl2026/05_reference_browser.mp4'
