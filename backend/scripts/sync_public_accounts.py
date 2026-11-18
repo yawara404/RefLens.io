@@ -380,15 +380,30 @@ def seed_starter_board_if_empty(
     return created
 
 
+def _r2_storage():
+    """R2 が有効な場合のみ storage サービスを返す（未設定時は None）。"""
+    try:
+        if str(BACKEND_DIR) not in sys.path:
+            sys.path.insert(0, str(BACKEND_DIR))
+        from app.services.storage import storage
+
+        return storage if storage.is_r2_active else None
+    except Exception:
+        return None
+
+
 def sync_upload_files(
     source: sqlite3.Connection, target: sqlite3.Connection, user_ids: list[str]
 ) -> int:
-    """同期したユーザーのメディアが指す画像ファイルを公開側の保存先へコピーする。"""
+    """同期したユーザーのメディアが指す画像ファイルを公開側（または R2）へ同期する。"""
     src_dir = Path(os.environ.get("SOURCE_UPLOAD_DIR") or BACKEND_DIR / "uploads")
     dst_dir = Path(os.environ.get("UPLOAD_DIR") or BACKEND_DIR / "public-uploads")
     if not src_dir.is_dir() or not user_ids:
         return 0
-    dst_dir.mkdir(parents=True, exist_ok=True)
+
+    r2 = _r2_storage()
+    if not r2:
+        dst_dir.mkdir(parents=True, exist_ok=True)
 
     placeholders = ",".join("?" * len(user_ids))
     copied = 0
@@ -407,8 +422,17 @@ def sync_upload_files(
             seen.add(value)
             name = value[len("/uploads/"):]
             src_file = src_dir / name
+            if not src_file.is_file():
+                continue
+
+            if r2:
+                if not r2.exists_sync(name):
+                    r2.save_bytes_sync(name, src_file.read_bytes())
+                    copied += 1
+                continue
+
             dst_file = dst_dir / name
-            if dst_file.exists() or not src_file.is_file():
+            if dst_file.exists():
                 continue
             shutil.copy2(src_file, dst_file)
             copied += 1

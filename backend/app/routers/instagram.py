@@ -91,7 +91,7 @@ async def import_instagram_media(
     db: Session = Depends(get_db)
 ):
     """選択されたInstagramメディアをキャンバスボードへ一括インポート"""
-    board = db.query(Board).filter(Board.id == payload.board_id).first()
+    board = db.query(Board).filter(Board.id == payload.board_id, Board.user_id == user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 

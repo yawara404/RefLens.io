@@ -252,7 +252,7 @@ start_frontend() {
     PORT="$port" \
     NUXT_PUBLIC_API_BASE="$api_base" \
     NUXT_PUBLIC_MEDIA_BASE="$media_base" \
-      nohup npm run dev -- --port "$port" >> "$FRONTEND_LOG" 2>&1 &
+      nohup npm run dev -- --host 127.0.0.1 --port "$port" >> "$FRONTEND_LOG" 2>&1 &
     echo $! > "$FRONTEND_PID"
   )
 

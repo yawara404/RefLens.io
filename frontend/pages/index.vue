@@ -76,8 +76,12 @@ const route = useRoute()
 
 /** 未ログイン時の表示モード管理（false: 初期ビュー・LP, true: デモ体験モード） */
 const isDemoMode = ref(false)
+// 保存済みログイン情報はクライアントで復元されるため、初回描画はSSRと揃える。
+const isMounted = ref(false)
+const isAuthenticated = computed(() => isMounted.value && auth.isAuthenticated)
 
 onMounted(() => {
+  isMounted.value = true
   if (route.query.demo === '1' || route.query.demo === 'true') {
     isDemoMode.value = true
   }
@@ -86,7 +90,7 @@ onMounted(() => {
 /** 初期ビューを表示するか（未ログインかつデモ体験モードに入っていない時） */
 const showLandingHero = computed(() => {
   // ログイン済みなら初期ビューは出さず通常画面へ
-  if (auth.isAuthenticated) return false
+  if (isAuthenticated.value) return false
   // デモモードに入っていれば通常画面（デモ表示）へ
   if (isDemoMode.value) return false
   // 未ログイン時は初期ビュー（LP/ヒーロー）を表示
@@ -1101,7 +1105,7 @@ onBeforeUnmount(() => {
         <div class="shrink-0 space-y-3">
           <!-- 未ログイン時のウェルカムカード (floppy.io風) -->
           <WelcomeSidebarCard
-            v-if="!auth.isAuthenticated"
+            v-if="!isAuthenticated"
             @open-auth="triggerAuthDialog"
           />
 
@@ -1363,7 +1367,7 @@ onBeforeUnmount(() => {
         <template v-else>
           <!-- デモ体験モード案内バナー (未ログイン時のみ) -->
           <div
-            v-if="!auth.isAuthenticated"
+            v-if="!isAuthenticated"
             class="p-3 sm:p-3.5 rounded-2xl bg-brand/10 border border-brand/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-ink shadow-2xs animate-fade-in"
           >
             <div class="flex items-center gap-2.5 min-w-0">

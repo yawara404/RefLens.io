@@ -10,7 +10,7 @@ useSeo({
 </script>
 
 <template>
-  <SiteInfoPage title="プライバシーポリシー" updated="2026年11月12日">
+  <SiteInfoPage title="プライバシーポリシー" updated="2026年11月17日">
     <p>このページは、現行のRefLens.ioで扱うデータと、その利用方法を説明します。公開運用に必要な運営者情報・問い合わせ窓口は、運営者による確認が必要です。</p>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">取得・保存する情報</h2>
@@ -24,10 +24,11 @@ useSeo({
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">外部サービスとの通信</h2>
       <p>Pixiv作品の取得にはPixivとの通信が発生します。AI解析の設定によっては、画像がGoogle Gemini APIへ送信される場合があります。ローカルのOllamaまたは画像特徴量による解析を使用する場合もあります。画面表示時にはGoogle Fonts等の外部リソースを読み込む場合があります。</p>
+      <p>画像の保管にはCloudflare R2を利用します。画像はバックエンドを通して配信し、設定によってサーバーにもキャッシュを保存します。</p>
     </section>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">保存と削除</h2>
-      <p>画像や解析結果はサーバーに保持されます。ライブラリのブックマークは画面から削除できますが、アカウント全体の削除機能や一律の保存期間は現在設けていません。公開サーバーでの利用前に、保存先とアクセス権限を確認してください。</p>
+      <p>画像や解析結果はサーバーおよびCloudflare R2に保持されます。ライブラリのブックマークは画面から削除できます。他の資料や環境から参照されている画像、デモ用の共通画像、移行前のローカル画像やキャッシュは保持される場合があります。アカウント全体の削除機能や一律の保存期間は現在設けていません。</p>
     </section>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">ゲスト利用に関する注意</h2>

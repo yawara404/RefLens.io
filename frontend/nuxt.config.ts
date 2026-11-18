@@ -14,6 +14,8 @@ const appBase = appBaseURL.endsWith('/') ? appBaseURL : `${appBaseURL}/`
 
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
+  // ホストのDEBUG環境変数に関わらず、公開画面へ計測ログを出さない。
+  debug: false,
 
   // 明示的に指定しておくと、Nuxtr (VS Code 拡張) がファイル生成・IntelliSense の
   // 対象ディレクトリを確実にプロジェクトルートと判定できる。

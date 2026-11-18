@@ -131,7 +131,7 @@ flowchart LR
     User[ブラウザ] --> Front[Nuxt 3 / Vue 3]
     Front --> API[FastAPI]
     API --> DB[(資料・ボード・アカウント)]
-    API --> Images[画像の保存・最適化]
+    API --> Images[Cloudflare R2 / ローカル画像保存]
     API --> External[pixiv / Instagram連携]
     API --> Analysis[画像解析]
     Analysis --> Local[Ollama]
@@ -145,8 +145,13 @@ flowchart LR
 | **状態・見た目** | Pinia / Tailwind CSS / Lucide | 画面間の状態共有、テーマ、操作UI |
 | **API** | Python / FastAPI / SQLAlchemy | 認証、資料保存、外部サービス連携 |
 | **データ** | SQLite / MySQL対応 | ボード、資料、フォルダ、解析結果の保存 |
+| **画像保存** | Cloudflare R2 / boto3 | 画像の保管、バックエンド経由の配信、解析時の一時取得 |
 | **画像解析** | Ollama / Gemini API / Pillow | 画像の特徴を構造化して検索・比較を補助 |
 | **公開配信** | Cloudflare Tunnel | `/RefLens.io/` 配下での配信 |
+
+R2の認証情報は`backend/.env`に設定します（項目は[`.env.example`](backend/.env.example)を参照）。`STORAGE_BACKEND=auto`では設定が揃うとR2を使い、未設定ならローカルに保存します。R2を必須にする場合は`STORAGE_BACKEND=r2`を指定します。`R2_PUBLIC_URL`を空にすると、画像は従来の`/uploads/`からバックエンド経由で配信されます。
+
+既存画像の確認は`backend/venv/bin/python backend/scripts/migrate_to_r2.py --dry-run`で行えます。移行ツールはR2上の内容も照合し、同名で内容が異なる場合は停止します。通常の移行ではローカル画像を残します。接続状態は`GET /api/v1/media/storage/status?verify=true`で確認できます。
 
 <details>
 <summary><strong>設計上の工夫・コードの入口を見る</strong></summary>

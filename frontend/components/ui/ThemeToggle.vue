@@ -27,7 +27,7 @@ const { dialogRef } = useDialogA11y(isOpen, () => { isOpen.value = false })
   <div class="relative shrink-0">
     <button
       type="button"
-      class="flex items-center gap-1.5 p-2 lg:px-2.5 lg:py-1.5 rounded-xl text-xs text-ink hover:text-brand hover:bg-canvas-hover transition-colors border border-canvas-border-strong font-bold"
+      class="flex items-center gap-1.5 p-2 xl:px-2.5 xl:py-1.5 rounded-xl text-xs text-ink hover:text-brand hover:bg-canvas-hover transition-colors border border-canvas-border-strong font-bold whitespace-nowrap"
       :title="`テーマ: ${current.label}（現在 ${resolvedTheme === 'dark' ? 'ダーク' : 'ライト'}）`"
       :aria-label="`テーマ設定を開く（現在 ${current.label}）`"
       aria-haspopup="dialog"
@@ -35,7 +35,7 @@ const { dialogRef } = useDialogA11y(isOpen, () => { isOpen.value = false })
       @click="isOpen = !isOpen"
     >
       <component :is="CurrentIcon" class="w-4 h-4 lg:w-3.5 lg:h-3.5 text-brand" />
-      <span class="hidden lg:inline font-bold">{{ current.label }}</span>
+      <span class="hidden xl:inline font-bold">{{ current.label }}</span>
     </button>
 
     <Teleport to="body">

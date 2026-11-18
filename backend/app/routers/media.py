@@ -2,16 +2,21 @@ import asyncio
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from PIL import Image
 import httpx
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import Board, MediaItem, CanvasItem, AIAnalysis, User
 from app.routers.auth import get_current_user
 from app.services.llm_analyzer import analyze_image_with_vision, describe_active_provider
+from app.services.storage import (
+    compute_canvas_dimensions,
+    inspect_image_bytes,
+    storage,
+)
 
 router = APIRouter(prefix="/media", tags=["media"])
 _analysis_slots = asyncio.Semaphore(2)
@@ -100,7 +105,11 @@ async def perform_ai_analysis(
 
         # 大量取り込み時も画像解析がAPIのイベントループとCPUを占有しないようにする。
         async with _analysis_slots:
-            analysis_data = await analyze_image_with_vision(Path(file_path_str))
+            async with storage.async_local_file_path(file_path_str) as resolved_path:
+                if not resolved_path or not resolved_path.exists():
+                    print(f"Skipping AI analysis for {media_id}: image file not accessible ({file_path_str})")
+                    return
+                analysis_data = await analyze_image_with_vision(resolved_path)
 
         def save_result() -> None:
             db = db_factory()
@@ -127,7 +136,7 @@ async def upload_media(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    board = db.query(Board).filter(Board.id == board_id).first()
+    board = db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -135,35 +144,20 @@ async def upload_media(
     if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
         ext = ".jpg"
 
-    unique_filename = f"{uuid.uuid4().hex}{ext}"
-    saved_path = settings.UPLOAD_DIR / unique_filename
-
-    # ファイルを保存
     content = await file.read()
-    with open(saved_path, "wb") as f:
-        f.write(content)
+    meta_img = inspect_image_bytes(
+        content,
+        fallback_ext=ext,
+        fallback_mime=file.content_type or f"image/{ext.replace('.', '')}",
+    )
+    unique_filename = f"{uuid.uuid4().hex}{meta_img.extension}"
 
-    # 画像のメタデータ（解像度）を取得
-    try:
-        with Image.open(saved_path) as img:
-            w, h = img.size
-            mime = file.content_type or f"image/{ext.replace('.', '')}"
-    except Exception:
-        w, h = 400, 400
-        mime = "image/jpeg"
+    # Cloudflare R2（未設定時はローカル）へ保存
+    relative_url = await storage.save_bytes(unique_filename, content, content_type=meta_img.mime_type)
 
-    aspect_ratio = float(w) / float(h) if h > 0 else 1.0
-
-    # 初期キャンバスサイズ（長辺360px前後にスケール）
-    max_dim = 360.0
-    if w >= h:
-        item_w = max_dim
-        item_h = max_dim / aspect_ratio
-    else:
-        item_h = max_dim
-        item_w = max_dim * aspect_ratio
-
-    relative_url = f"/uploads/{unique_filename}"
+    w, h = meta_img.width, meta_img.height
+    aspect_ratio = meta_img.aspect_ratio
+    item_w, item_h = compute_canvas_dimensions(w, h)
 
     # MediaItem作成
     media_item = MediaItem(
@@ -173,7 +167,7 @@ async def upload_media(
         source_type="local_upload",
         original_file_name=file.filename,
         file_path=relative_url,
-        mime_type=mime,
+        mime_type=meta_img.mime_type,
         file_size=len(content),
         width=w,
         height=h,
@@ -202,7 +196,7 @@ async def upload_media(
 
     # バックグラウンドでAI解析を実行
     from app.core.database import SessionLocal
-    background_tasks.add_task(perform_ai_analysis, media_item.id, str(saved_path), SessionLocal)
+    background_tasks.add_task(perform_ai_analysis, media_item.id, media_item.file_path, SessionLocal)
 
     return {
         "item": {
@@ -273,11 +267,9 @@ async def visual_search_endpoint(
         media = db.query(MediaItem).filter(MediaItem.id == payload.media_item_id, MediaItem.user_id == user.id).first()
         if not media:
             raise HTTPException(status_code=404, detail="メディアアイテムが見つかりません")
-        file_name = Path(media.file_path).name
-        actual_path = settings.UPLOAD_DIR / file_name
-        if not actual_path.exists():
+        image_bytes = await storage.get_bytes(media.file_path)
+        if image_bytes is None:
             raise HTTPException(status_code=404, detail="画像ファイルが存在しません")
-        image_bytes = actual_path.read_bytes()
     else:
         raise HTTPException(status_code=400, detail="image_base64 または media_item_id を指定してください")
 
@@ -302,46 +294,39 @@ async def import_from_url(
     db: Session = Depends(get_db)
 ):
     """外部URL（またはInstagramメディアURL）から画像を取り込み"""
-    board = db.query(Board).filter(Board.id == payload.board_id).first()
+    board = db.query(Board).filter(Board.id == payload.board_id, Board.user_id == user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    unique_filename = f"{uuid.uuid4().hex}.jpg"
-    saved_path = settings.UPLOAD_DIR / unique_filename
-
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
             resp = await client.get(payload.image_url)
             if resp.status_code != 200:
                 raise HTTPException(status_code=400, detail="Failed to fetch image from URL")
-            with open(saved_path, "wb") as f:
-                f.write(resp.content)
-            content_len = len(resp.content)
+            raw_bytes = resp.content
+            content_len = len(raw_bytes)
+            header_mime = (resp.headers.get("content-type") or "").split(";")[0].strip() or None
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Image download error: {str(e)}")
 
-    try:
-        with Image.open(saved_path) as img:
-            w, h = img.size
-    except Exception:
-        w, h = 400, 400
+    url_ext = Path(urlparse(payload.image_url).path).suffix.lower() or ".jpg"
+    meta_img = inspect_image_bytes(raw_bytes, fallback_ext=url_ext, fallback_mime=header_mime)
+    unique_filename = f"{uuid.uuid4().hex}{meta_img.extension}"
+    relative_url = await storage.save_bytes(unique_filename, raw_bytes, content_type=meta_img.mime_type)
 
-    aspect_ratio = float(w) / float(h) if h > 0 else 1.0
-    max_dim = 360.0
-    if w >= h:
-        item_w = max_dim
-        item_h = max_dim / aspect_ratio
-    else:
-        item_h = max_dim
-        item_w = max_dim * aspect_ratio
+    w, h = meta_img.width, meta_img.height
+    aspect_ratio = meta_img.aspect_ratio
+    item_w, item_h = compute_canvas_dimensions(w, h)
 
-    relative_url = f"/uploads/{unique_filename}"
     media_item = MediaItem(
         user_id=user.id,
         board_id=payload.board_id,
         source_type="external_url",
         original_file_name=payload.caption or "imported_reference.jpg",
         file_path=relative_url,
+        mime_type=meta_img.mime_type,
         source_url=payload.image_url,
         file_size=content_len,
         width=w,
@@ -368,7 +353,7 @@ async def import_from_url(
     db.refresh(canvas_item)
 
     from app.core.database import SessionLocal
-    background_tasks.add_task(perform_ai_analysis, media_item.id, str(saved_path), SessionLocal)
+    background_tasks.add_task(perform_ai_analysis, media_item.id, media_item.file_path, SessionLocal)
 
     return {
         "item": {
@@ -409,12 +394,11 @@ async def reanalyze_media(
         media.ai_analysis_policy = "allowed"
         db.commit()
 
-    file_name = Path(media.file_path).name
-    actual_path = settings.UPLOAD_DIR / file_name
-    if not actual_path.exists():
-        raise HTTPException(status_code=404, detail="File on disk not found")
+    async with storage.async_local_file_path(media.file_path) as actual_path:
+        if not actual_path or not actual_path.exists():
+            raise HTTPException(status_code=404, detail="File not found in storage")
+        analysis = await analyze_image_with_vision(actual_path)
 
-    analysis = await analyze_image_with_vision(actual_path)
     _save_analysis(db, media_id, analysis)
     # 内部キー（_model）はレスポンスに含めない
     return {k: v for k, v in analysis.items() if not k.startswith("_")}
@@ -424,3 +408,12 @@ async def reanalyze_media(
 def get_ai_provider():
     """現在どの AI プロバイダが使われるかを返す（デバッグ / UI 表示用）"""
     return describe_active_provider()
+
+
+@router.get("/storage/status")
+def get_storage_status(
+    verify: bool = False,
+    user: User = Depends(get_current_user),
+):
+    """現在のストレージバックエンド設定（Cloudflare R2 / ローカル）を返す"""
+    return storage.describe_status(verify_remote=verify)

@@ -68,6 +68,8 @@ cloudflare/*.json
 *.pid
 *.db-journal
 .data/
+.playwright-cli/
+output/playwright/
 
 # ============================================================
 # OS / エディタ

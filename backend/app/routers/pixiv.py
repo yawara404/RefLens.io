@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import time
 from typing import Annotated, List, Optional
 from urllib.parse import urlparse
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,13 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from PIL import Image
 
 from app.core.config import settings
 from app.core.pixiv_tokens import decrypt_token, encrypt_token
 from app.core.database import get_db
 from app.models.models import Board, CanvasItem, Folder, MediaItem, PixivAccount, User
 from app.routers.auth import GUEST_EMAIL, get_current_user
+from app.services.storage import inspect_image_bytes, storage
 from app.routers.media import perform_ai_analysis
 from app.services.pixiv_ai_policy import resolve_pixiv_ai_policy
 from app.services.pixiv_client import (
@@ -573,7 +574,7 @@ def _place_on_canvas(
     pos_y: Optional[float] = None,
 ) -> Optional[str]:
     """MediaItemをキャンバスへ配置する。座標省略時は重複なく自動配置する"""
-    if not db.query(Board).filter(Board.id == board_id).first():
+    if not db.query(Board).filter(Board.id == board_id, Board.user_id == media.user_id).first():
         return None
 
     item_w, item_h = _scaled_dimensions(media.width, media.height)
@@ -629,6 +630,9 @@ async def _stock_one_illust(
     """1作品を（指定ページだけ）ダウンロードしてMediaItemとして登録し、任意でCanvasへ配置"""
     from app.core.database import SessionLocal
 
+    if board_id and not db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first():
+        raise HTTPException(status_code=404, detail="Board not found")
+
     # (元ページindex, page dict) の組を作る
     indexed_pages = list(enumerate(pages)) or [(0, {"image_url": illust.get("image_url")})]
     if page_indexes:
@@ -678,16 +682,20 @@ async def _stock_one_illust(
             created.append(entry)
             continue
 
-        saved_path, dl_error = await PixivClient().download_image(image_url, settings.UPLOAD_DIR)
-        if not saved_path:
+        cached_path, dl_error = await PixivClient().download_image(image_url, settings.PIXIV_CACHE_DIR)
+        if not cached_path or not cached_path.exists():
             errors.append(dl_error or "画像の取得に失敗しました")
             continue
 
-        try:
-            with Image.open(saved_path) as img:
-                img_w, img_h = img.size
-        except Exception:
-            img_w, img_h = illust.get("width") or 0, illust.get("height") or 0
+        raw_bytes = cached_path.read_bytes()
+        meta_img = inspect_image_bytes(raw_bytes, fallback_ext=cached_path.suffix or ".jpg")
+        img_w = meta_img.width or (illust.get("width") or 0)
+        img_h = meta_img.height or (illust.get("height") or 0)
+
+        unique_filename = f"{uuid.uuid4().hex}{meta_img.extension}"
+        relative_url = await storage.save_bytes(
+            unique_filename, raw_bytes, content_type=meta_img.mime_type
+        )
 
         page_title = illust.get("title") or f"pixiv #{illust.get('id')}"
         if len(indexed_pages) > 1:
@@ -707,12 +715,12 @@ async def _stock_one_illust(
             original_file_name=f"pixiv_{illust.get('id')}_{source_page_index}.jpg",
             author_name=illust.get("author_name"),
             favicon_url="https://www.pixiv.net/favicon.ico",
-            file_path=f"/uploads/{saved_path.name}",
+            file_path=relative_url,
             source_url=illust.get("source_url"),
             pixiv_illust_id=str(illust.get("id")),
             pixiv_page_index=source_page_index,
-            mime_type="image/jpeg",
-            file_size=saved_path.stat().st_size if saved_path.exists() else 0,
+            mime_type=meta_img.mime_type,
+            file_size=len(raw_bytes),
             width=img_w,
             height=img_h,
             aspect_ratio=(float(img_w) / float(img_h)) if img_h else 1.0,
@@ -727,7 +735,7 @@ async def _stock_one_illust(
             background_tasks.add_task(
                 perform_ai_analysis,
                 media_item.id,
-                str(saved_path),
+                media_item.file_path,
                 SessionLocal,
                 list(illust.get("tags") or [])[:12],
             )

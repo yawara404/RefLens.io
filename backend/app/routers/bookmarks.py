@@ -1,3 +1,4 @@
+import io
 import re
 import uuid
 from pathlib import Path
@@ -17,6 +18,12 @@ from app.models.models import AIAnalysis, Board, CanvasItem, Folder, MediaItem, 
 from app.routers.auth import get_current_user
 from app.routers.media import perform_ai_analysis
 from app.services.pixiv_ai_policy import resolve_pixiv_ai_policy
+from app.services.media_cleanup import cleanup_unreferenced_storage
+from app.services.storage import (
+    compute_canvas_dimensions,
+    inspect_image_bytes,
+    storage,
+)
 
 router = APIRouter(prefix="/bookmarks", tags=["bookmarks"])
 
@@ -243,12 +250,11 @@ def _resolve_item_palette(file_path: Optional[str], ai_palette: Optional[list]) 
         return _LOCAL_PALETTE_CACHE[file_path]
 
     try:
-        filename = Path(file_path).name
-        local_file = settings.UPLOAD_DIR / filename
-        if not local_file.exists():
+        raw_bytes = storage.get_bytes_sync(file_path)
+        if not raw_bytes:
             return list(ai_palette or [])
 
-        with Image.open(local_file) as img:
+        with Image.open(io.BytesIO(raw_bytes)) as img:
             small = img.convert("RGB").resize((64, 64))
             quantized = small.quantize(colors=8, method=Image.Quantize.MEDIANCUT)
             raw_pal = quantized.getpalette() or []
@@ -399,46 +405,60 @@ async def add_bookmark(
     db: Session = Depends(get_db)
 ):
     """InstagramやWebのURLをワンクリックでブックマーク保存（画像DL & AI解析）"""
+    if payload.board_id:
+        board = db.query(Board).filter(Board.id == payload.board_id, Board.user_id == user.id).first()
+        if not board:
+            raise HTTPException(status_code=404, detail="Board not found")
     meta = await extract_url_metadata(payload.url, db, user)
 
     image_url = meta.get("image_url", payload.url)
 
     # pixiv画像 (i.pximg.net) は Referer ヘッダが無いと403になるため公式クライアントで取得する
     is_pixiv = meta.get("source_type") == "pixiv" and bool(meta.get("pixiv_illust_id"))
-    unique_filename = f"{uuid.uuid4().hex}.jpg"
-    saved_path = settings.UPLOAD_DIR / unique_filename
+    raw_bytes: Optional[bytes] = None
+    fallback_ext = Path(urlparse(image_url).path).suffix.lower() or ".jpg"
+    header_mime: Optional[str] = None
 
     if is_pixiv:
         from app.services.pixiv_client import PixivClient
 
-        downloaded, dl_error = await PixivClient().download_image(image_url, settings.UPLOAD_DIR)
-        if downloaded:
-            saved_path = downloaded
+        downloaded, dl_error = await PixivClient().download_image(image_url, settings.PIXIV_CACHE_DIR)
+        if downloaded and downloaded.exists():
+            raw_bytes = downloaded.read_bytes()
+            fallback_ext = downloaded.suffix.lower() or ".jpg"
         else:
             print(f"pixiv download failed ({payload.url}): {dl_error}")
-            saved_path = settings.UPLOAD_DIR / "seed_ref_1.jpg"
     else:
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
                 resp = await client.get(image_url)
                 if resp.status_code == 200:
-                    with open(saved_path, "wb") as f:
-                        f.write(resp.content)
-                else:
-                    raise Exception("Failed to download image")
+                    raw_bytes = resp.content
+                    header_mime = (resp.headers.get("content-type") or "").split(";")[0].strip() or None
         except Exception:
-            # ダウンロード失敗時はデフォルトサンプル
-            saved_path = settings.UPLOAD_DIR / "seed_ref_1.jpg"
+            raw_bytes = None
 
-    # 画像サイズ取得
-    try:
-        with Image.open(saved_path) as img:
-            w, h = img.size
-    except Exception:
-        w, h = 400, 400
-
-    aspect_ratio = float(w) / float(h) if h > 0 else 1.0
-    relative_url = f"/uploads/{saved_path.name}"
+    if raw_bytes:
+        meta_img = inspect_image_bytes(raw_bytes, fallback_ext=fallback_ext, fallback_mime=header_mime)
+        unique_filename = f"{uuid.uuid4().hex}{meta_img.extension}"
+        relative_url = await storage.save_bytes(unique_filename, raw_bytes, content_type=meta_img.mime_type)
+        w, h = meta_img.width, meta_img.height
+        aspect_ratio = meta_img.aspect_ratio
+        mime_type = meta_img.mime_type
+        file_size = len(raw_bytes)
+    else:
+        # ダウンロード失敗時はシード画像フォールバック
+        seed_bytes = await storage.get_bytes("/uploads/seed_ref_1.jpg")
+        if seed_bytes:
+            meta_img = inspect_image_bytes(seed_bytes, fallback_ext=".jpg")
+            relative_url = storage.file_path_for("seed_ref_1.jpg")
+            w, h = meta_img.width, meta_img.height
+            aspect_ratio = meta_img.aspect_ratio
+            mime_type = meta_img.mime_type
+            file_size = len(seed_bytes)
+        else:
+            relative_url = image_url
+            w, h, aspect_ratio, mime_type, file_size = 400, 400, 1.0, "image/jpeg", 0
 
     media_item = MediaItem(
         user_id=user.id,
@@ -453,7 +473,8 @@ async def add_bookmark(
         source_url=payload.url,
         pixiv_illust_id=meta.get("pixiv_illust_id"),
         pixiv_page_index=0 if meta.get("pixiv_illust_id") else None,
-        file_size=saved_path.stat().st_size if saved_path.exists() else 0,
+        mime_type=mime_type,
+        file_size=file_size,
         width=w,
         height=h,
         aspect_ratio=aspect_ratio,
@@ -466,13 +487,7 @@ async def add_bookmark(
     # ボード指定がある場合はキャンバスにも配置
     canvas_item = None
     if payload.board_id:
-        max_dim = 360.0
-        if w >= h:
-            item_w = max_dim
-            item_h = max_dim / aspect_ratio
-        else:
-            item_h = max_dim
-            item_w = max_dim * aspect_ratio
+        item_w, item_h = compute_canvas_dimensions(w, h)
 
         max_z = db.query(CanvasItem).filter(CanvasItem.board_id == payload.board_id).count() + 1
         canvas_item = CanvasItem(
@@ -497,7 +512,7 @@ async def add_bookmark(
         background_tasks.add_task(
             perform_ai_analysis,
             media_item.id,
-            str(saved_path),
+            media_item.file_path,
             SessionLocal,
             list(meta.get("tags") or [])[:12],
         )
@@ -634,9 +649,11 @@ def batch_delete_bookmarks(
         MediaItem.id.in_(payload.bookmark_ids),
         MediaItem.user_id == user.id
     ).all()
+    candidate_paths = [media.file_path for media in media_items]
     for media in media_items:
         db.delete(media)
     db.commit()
+    cleanup_unreferenced_storage(db, candidate_paths)
     return {"count": len(media_items), "message": f"{len(media_items)} items deleted"}
 
 @router.put("/{bookmark_id}/folder")
@@ -765,15 +782,13 @@ async def manual_analyze_bookmark(
     if not media:
         raise HTTPException(status_code=404, detail="Bookmark not found")
 
-    file_name = Path(media.file_path).name
-    saved_path = settings.UPLOAD_DIR / file_name
-    if not saved_path.exists():
-        raise HTTPException(status_code=404, detail="Media file not found on disk")
+    if not await storage.exists(media.file_path):
+        raise HTTPException(status_code=404, detail="Media file not found in storage")
 
     background_tasks.add_task(
         perform_ai_analysis,
         media.id,
-        str(saved_path),
+        media.file_path,
         SessionLocal,
         None,
         True,
@@ -790,8 +805,10 @@ def delete_bookmark(
     if not media:
         raise HTTPException(status_code=404, detail="Bookmark not found")
 
+    candidate_path = media.file_path
     db.delete(media)
     db.commit()
+    cleanup_unreferenced_storage(db, [candidate_path])
     return {"message": "Bookmark deleted"}
 
 @router.get("/folders")

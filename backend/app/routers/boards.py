@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
 from app.models.models import Board, CanvasItem, Folder, MediaItem, User
 from app.routers.auth import get_current_user
+from app.services.media_cleanup import cleanup_unreferenced_storage
 
 router = APIRouter(prefix="/boards", tags=["boards"])
 
@@ -140,7 +141,7 @@ def get_board_detail(
     db: Session = Depends(get_db)
 ):
     """ボード詳細と配置されているキャンバスアイテム・AI解析データを取得"""
-    board = db.query(Board).filter(Board.id == board_id).first()
+    board = db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -218,7 +219,7 @@ def update_board(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    board = db.query(Board).filter(Board.id == board_id).first()
+    board = db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -246,7 +247,7 @@ def batch_update_items(
     db: Session = Depends(get_db)
 ):
     """PureRefキャンバス上の全配置アイテム座標・変換を一括保存"""
-    board = db.query(Board).filter(Board.id == board_id).first()
+    board = db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -283,9 +284,13 @@ def arrange_items(
     board_id: str,
     layout_type: str = "grid", # grid, horizontal, vertical, pack
     spacing: float = 30.0,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """PureRefスタイルのアイテム自動整列（整列・グリッド配置）"""
+    board = db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
     items = db.query(CanvasItem).filter(CanvasItem.board_id == board_id).order_by(CanvasItem.z_index.asc()).all()
     if not items:
         return {"message": "No items to arrange"}
@@ -338,7 +343,7 @@ def save_board_items_to_folder(
     db: Session = Depends(get_db)
 ):
     """キャンバス上の全資料または選択した資料を一括でフォルダに保存する"""
-    board = db.query(Board).filter(Board.id == board_id).first()
+    board = db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -385,7 +390,7 @@ def duplicate_board_items(
     db: Session = Depends(get_db)
 ):
     """選択されたキャンバスアイテムを複製する"""
-    board = db.query(Board).filter(Board.id == board_id).first()
+    board = db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -474,8 +479,12 @@ def duplicate_board_items(
 def delete_canvas_item(
     board_id: str,
     item_id: str,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    board = db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
     item = db.query(CanvasItem).filter(CanvasItem.id == item_id, CanvasItem.board_id == board_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Canvas item not found")
@@ -489,9 +498,11 @@ def delete_board(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    board = db.query(Board).filter(Board.id == board_id).first()
+    board = db.query(Board).filter(Board.id == board_id, Board.user_id == user.id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
+    candidate_paths = [media.file_path for media in board.media_items]
     db.delete(board)
     db.commit()
+    cleanup_unreferenced_storage(db, candidate_paths)
     return {"message": "Board deleted"}

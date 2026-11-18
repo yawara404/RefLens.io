@@ -1,17 +1,20 @@
 from contextlib import asynccontextmanager
+import httpx
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from app.core.config import settings
 from app.core.database import init_db, SessionLocal
 from app.models.models import User, Board, MediaItem, CanvasItem, AIAnalysis
 from app.routers import auth, boards, media, instagram, bookmarks, pixiv
+from app.services.storage import storage
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     seed_initial_demo_data()
+    print(f"[startup] media storage backend: {storage.mode} (bucket={storage.bucket_name or '-'})")
     yield
 
 
@@ -40,14 +43,58 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
-# Static files for uploaded images
+# Uploaded images delivery (local cache + Cloudflare R2 fallback)
 #
 # root_path を指定したASGI app では、Starlette はルート照合時に scope["path"] から
 # root_path を差し引く（検証済み: FastAPI(root_path=...) 単体で 200 になる）。
-# そのため mount は素の "/uploads" でよい。接頭辞を含めると
-# 「/RefLens.io/uploads/x.jpg」を 1 回差し引いて /RefLens.io/uploads/x.jpg が残り
-# mount に一致せず 404 になる。
-app.mount("/uploads", StaticFiles(directory=str(settings.UPLOAD_DIR)), name="uploads")
+# そのためルート定義は素の "/uploads/{file_path:path}" とする。
+@app.api_route("/uploads/{file_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+async def serve_uploaded_media(file_path: str, request: Request):
+    head_only = request.method == "HEAD"
+    try:
+        delivery = await storage.get_delivery(file_path, head_only=head_only)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    if not delivery:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if delivery.local_path is not None:
+        return FileResponse(
+            path=str(delivery.local_path),
+            media_type=delivery.content_type,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    headers = {"Cache-Control": "public, max-age=86400"}
+    if delivery.etag:
+        headers["ETag"] = delivery.etag
+    if delivery.content_length is not None:
+        headers["Content-Length"] = str(delivery.content_length)
+
+    if delivery.etag and request.headers.get("if-none-match") == delivery.etag:
+        if delivery.stream_body is not None:
+            delivery.stream_body.close()
+        return Response(status_code=304, headers=headers)
+
+    if head_only:
+        return Response(status_code=200, media_type=delivery.content_type, headers=headers)
+
+    body = delivery.stream_body
+
+    def iter_r2_chunks():
+        try:
+            for chunk in body.iter_chunks(chunk_size=65536):
+                if chunk:
+                    yield chunk
+        finally:
+            body.close()
+
+    return StreamingResponse(
+        iter_r2_chunks(),
+        media_type=delivery.content_type,
+        headers=headers,
+    )
 
 # Include Routers
 app.include_router(auth.router, prefix=settings.API_V1_STR)
@@ -126,18 +173,25 @@ def seed_initial_demo_data():
                 }
             ]
 
-            import urllib.request
             for idx, ref in enumerate(sample_references):
                 file_name = f"seed_ref_{idx+1}.jpg"
-                file_dest = settings.UPLOAD_DIR / file_name
-                
-                # 画像のダウンロード（ローカルフォールバック付き）
-                try:
-                    urllib.request.urlretrieve(ref["url"], str(file_dest))
-                except Exception:
-                    pass
+                rel_path = f"/uploads/{file_name}"
 
-                rel_path = f"/uploads/{file_name}" if file_dest.exists() else ref["url"]
+                # R2 またはローカルに存在しない場合は外部URLから取得してストレージへ保存
+                if not storage.exists_sync(rel_path):
+                    try:
+                        with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+                            resp = client.get(ref["url"])
+                            if resp.status_code == 200:
+                                rel_path = storage.save_bytes_sync(
+                                    file_name, resp.content, content_type="image/jpeg"
+                                )
+                            else:
+                                rel_path = ref["url"]
+                    except Exception:
+                        rel_path = ref["url"]
+                else:
+                    rel_path = storage.file_path_for(file_name)
 
                 folders_map = [
                     "Composition & Perspective",

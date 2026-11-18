@@ -62,7 +62,7 @@ watch(() => route.fullPath, () => {
 </script>
 
 <template>
-  <header class="h-14 border-b border-canvas-border bg-canvas-panel px-3 md:px-5 flex md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center justify-between gap-2 sticky top-0 z-40 select-none">
+  <header class="h-14 border-b border-canvas-border bg-canvas-panel px-3 md:px-5 flex items-center justify-between gap-2 sticky top-0 z-40 select-none">
     <!-- 左: ハンバーガーメニュー（モバイル）+ ロゴ -->
     <div class="flex items-center gap-2 min-w-0 justify-self-start">
       <button
@@ -97,7 +97,7 @@ watch(() => route.fullPath, () => {
         v-for="item in navItems"
         :key="item.to"
         :to="item.to"
-        class="w-28 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
+        class="w-24 xl:w-28 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
         :class="currentSection === item.key
           ? 'bg-brand text-brand-fg shadow-sm'
           : 'text-ink hover:text-brand hover:bg-canvas-hover'"
@@ -128,7 +128,7 @@ watch(() => route.fullPath, () => {
       <!-- ヘルプ（Tunedrop風の専用ページへの遷移ボタン: 一番右に配置） -->
       <NuxtLink
         to="/help"
-        class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border select-none"
+        class="flex shrink-0 items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border select-none whitespace-nowrap"
         :class="route.path === '/help'
           ? 'bg-brand text-brand-fg border-brand shadow-sm'
           : 'text-ink hover:text-brand hover:bg-canvas-hover border-canvas-border-strong bg-canvas-card'"
@@ -136,7 +136,7 @@ watch(() => route.fullPath, () => {
         aria-label="使い方・操作ガイド（ヘルプ）"
       >
         <HelpCircle class="w-4 h-4 shrink-0" :class="route.path === '/help' ? 'text-white' : 'text-brand'" />
-        <span class="hidden sm:inline">ヘルプ</span>
+        <span class="hidden xl:inline">ヘルプ</span>
       </NuxtLink>
     </div>
   </header>

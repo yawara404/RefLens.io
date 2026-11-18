@@ -63,9 +63,22 @@ class Settings(BaseSettings):
 
     # Storage
     BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
-    UPLOAD_DIR: Path = BASE_DIR / "uploads"
+    UPLOAD_DIR: Path = Path(os.getenv("UPLOAD_DIR") or str(BASE_DIR / "uploads"))
     # 画像プロキシのキャッシュディレクトリ
-    PIXIV_CACHE_DIR: Path = BASE_DIR / ".pixiv-cache"
+    PIXIV_CACHE_DIR: Path = Path(os.getenv("PIXIV_CACHE_DIR") or str(BASE_DIR / ".pixiv-cache"))
+
+    # Object Storage (Cloudflare R2 / Local)
+    STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "auto")
+    R2_ACCOUNT_ID: str = os.getenv("R2_ACCOUNT_ID", "")
+    R2_ACCESS_KEY_ID: str = os.getenv("R2_ACCESS_KEY_ID", "")
+    R2_SECRET_ACCESS_KEY: str = os.getenv("R2_SECRET_ACCESS_KEY", "")
+    R2_BUCKET_NAME: str = os.getenv("R2_BUCKET_NAME", "")
+    R2_ENDPOINT_URL: str = os.getenv("R2_ENDPOINT_URL", "")
+    R2_KEY_PREFIX: str = os.getenv("R2_KEY_PREFIX", "uploads")
+    R2_PUBLIC_URL: str = os.getenv("R2_PUBLIC_URL", "")
+    R2_LOCAL_CACHE: bool = os.getenv("R2_LOCAL_CACHE", "false").strip().lower() in (
+        "1", "true", "yes", "on"
+    )
     
     # CORS
     CORS_ORIGINS: list[str] = [
@@ -81,7 +94,7 @@ class Settings(BaseSettings):
     ]
 
     class Config:
-        env_file = ".env"
+        env_file = str(Path(__file__).resolve().parent.parent.parent / ".env")
         extra = "allow"
 
 settings = Settings()

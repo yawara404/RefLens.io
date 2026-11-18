@@ -170,7 +170,7 @@ onMounted(init)
         </div>
 
         <!-- キャンバス左上: ブックマーク開閉 + ボード情報・キャンバス内検索バー -->
-        <div v-if="boardReady" class="absolute top-3 left-3 z-20 flex items-center gap-1.5 pointer-events-none max-w-[calc(100%-12rem)] whitespace-nowrap">
+        <div v-if="boardReady" class="absolute top-3 left-3 z-20 flex items-center gap-1.5 pointer-events-none max-w-[calc(100%-9rem)] sm:max-w-[calc(100%-12rem)] whitespace-nowrap">
           <!-- ブックマークブラウザが閉じているとき、左上からも1クリックで開けるボタン -->
           <button
             v-if="!boardStore.isBrowserOpen"
@@ -191,10 +191,11 @@ onMounted(init)
             type="button"
             class="pointer-events-auto floating-bar px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-bold text-ink hover:border-brand transition-colors min-w-0 shadow-sm whitespace-nowrap"
             title="キャンバス内検索・ボード名の変更"
+            aria-label="キャンバス内検索・ボード名の変更"
             @click="isSearchModalOpen = true"
           >
             <Search class="w-3.5 h-3.5 text-brand shrink-0" />
-            <span class="truncate max-w-[110px] sm:max-w-[180px]">
+            <span class="hidden sm:inline truncate max-w-[180px]">
               {{ boardStore.searchQuery
                 ? `検索: ${boardStore.searchQuery}`
                 : (boardStore.currentBoard?.title || 'My Reference Board') }}
@@ -220,7 +221,7 @@ onMounted(init)
           <!-- デモ表示バッジ (未ログイン時) -->
           <div
             v-if="!auth.isAuthenticated"
-            class="pointer-events-auto floating-bar px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 text-[11px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0 shadow-sm"
+            class="hidden sm:flex pointer-events-auto floating-bar px-2.5 py-1.5 rounded-xl items-center gap-1.5 text-[11px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0 shadow-sm"
           >
             <span>DEMO MODE</span>
           </div>
