@@ -128,6 +128,22 @@ for (const { width, height, route } of TARGETS) {
     JSON.stringify(rootInfo)
   )
 
+  // アプリ型ページ（画面高さ固定レイアウト）はドキュメント自体がスクロールしないこと。
+  // 内部スクローラ内の absolute 要素が位置指定祖先を持たないとページ全体の
+  // スクロール領域を押し広げ、最下部に謎の余白（隙間）ができる。
+  if (route === '/' || route === '/view') {
+    const docInfo = await page.evaluate(() => ({
+      scrollHeight: document.documentElement.scrollHeight,
+      clientHeight: document.documentElement.clientHeight,
+      scrollY: window.scrollY,
+    }))
+    check(
+      `[${width}] ページ全体が縦スクロールしない（下端に余白が出ない）`,
+      docInfo.scrollHeight <= docInfo.clientHeight + 1,
+      JSON.stringify(docInfo)
+    )
+  }
+
   await page.screenshot({ path: `/tmp/mobile-${width}${suffix}-home.png` })
 
   // ここから先は Manager（/）固有の検査

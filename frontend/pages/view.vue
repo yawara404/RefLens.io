@@ -30,6 +30,7 @@ import {
 import AppHeader from '~/components/ui/AppHeader.vue'
 import MobileNavLinks from '~/components/ui/MobileNavLinks.vue'
 import PixivImage from '~/components/ui/PixivImage.vue'
+import PixivPager from '~/components/ui/PixivPager.vue'
 import QuickLookModal from '~/components/browser/QuickLookModal.vue'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import BookmarkActionsMenu from '~/components/ui/BookmarkActionsMenu.vue'
@@ -246,6 +247,45 @@ function applyFilters() {
   pixiv.duration.value = durationMode.value
   pixiv.loadFeed('search', 1)
   scrollResultsToTop()
+}
+
+/* ------------------------------------------------------------------ *
+ * ページ送り
+ * ------------------------------------------------------------------ */
+
+/** pixiv API の page パラメータ上限 */
+const MAX_PIXIV_PAGE = 100
+
+/**
+ * following / bookmarks はカーソル方式で、既知の次ページまでしか直接移動できない。
+ * それ以外（おすすめ・人気・検索）はページ番号を指定して移動できる。
+ */
+const supportsRandomPageAccess = computed(
+  () => !['following', 'bookmarks'].includes(pixiv.currentCategory.value),
+)
+
+/** ページ移動（同一ページ・範囲外・読み込み中は無視） */
+function goToPage(page: number) {
+  if (pixiv.isLoading.value) return
+  const maxPage = supportsRandomPageAccess.value
+    ? MAX_PIXIV_PAGE
+    : Math.min(MAX_PIXIV_PAGE, pixiv.currentPage.value + (pixiv.hasNext.value ? 1 : 0))
+  const target = Math.min(Math.max(1, Math.trunc(page)), maxPage)
+  if (!Number.isFinite(target) || target === pixiv.currentPage.value) return
+  pixiv.loadFeed(undefined, target)
+  scrollResultsToTop()
+}
+
+function goToPrevPage() {
+  goToPage(pixiv.currentPage.value - 1)
+}
+
+function goToNextPage() {
+  goToPage(pixiv.currentPage.value + 1)
+}
+
+function goToFirstPage() {
+  goToPage(1)
 }
 
 async function openDetail(item: PixivArtwork) {
@@ -688,7 +728,7 @@ onUnmounted(() => {
                 class="p-1.5 rounded-xl bg-canvas-bg hover:bg-canvas-hover text-ink-muted hover:text-ink border border-canvas-border-strong transition-colors shrink-0"
                 title="再読み込み"
                 aria-label="再読み込み"
-                @click="activeCategory === 'saved' ? boardStore.fetchBookmarks() : pixiv.loadFeed()"
+                @click="activeCategory === 'saved' ? boardStore.fetchBookmarks() : pixiv.loadFeed(undefined, pixiv.currentPage.value)"
               >
                 <RefreshCw class="w-4 h-4" :class="activeCategory !== 'saved' && pixiv.isLoading.value ? 'animate-spin text-pixiv' : ''" />
               </button>
@@ -822,6 +862,25 @@ onUnmounted(() => {
             </button>
           </div>
         </section>
+
+      <!-- クイックページ送り（上部: ページ移動直後でもスクロールせずに続けて移動できる） -->
+      <div
+        v-if="activeCategory !== 'saved' && (pixiv.items.value.length || pixiv.isLoading.value)"
+        class="flex items-center justify-end"
+      >
+        <PixivPager
+          compact
+          :page="pixiv.currentPage.value"
+          :has-next="pixiv.hasNext.value"
+          :is-loading="pixiv.isLoading.value"
+          :context-label="activeCategoryLabel"
+          aria-label="クイックページ送り"
+          @prev="goToPrevPage"
+          @next="goToNextPage"
+          @first="goToFirstPage"
+        />
+      </div>
+
       <!-- 通知バー -->
       <div
         v-if="activeCategory !== 'saved' && pixiv.notice.value"
@@ -946,24 +1005,23 @@ onUnmounted(() => {
               loading="lazy"
             />
 
-            <!-- 選択チェック（複数選択中や選択済みは常時表示、通常時はホバー表示） -->
-            <button
-              type="button"
-              class="absolute top-2 right-2 z-20 w-6 h-6 sm:w-5 sm:h-5 rounded-full border flex items-center justify-center transition-all shadow-sm"
-              :class="pixiv.isSelected(item.id)
-                ? 'bg-pixiv border-pixiv opacity-100'
-                : (isMultiSelectMode || pixiv.selectedIds.value.length
-                  ? 'bg-canvas-panel/90 border-canvas-border-strong opacity-100 hover:border-pixiv'
-                  : 'bg-canvas-panel/90 border-canvas-border-strong opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100')"
-              :aria-label="pixiv.isSelected(item.id) ? '選択解除' : '選択'"
-              :aria-pressed="pixiv.isSelected(item.id)"
-              @click.stop="toggleSelect(item.id)"
-            >
-              <Check v-if="pixiv.isSelected(item.id)" class="w-3.5 h-3.5 sm:w-3 sm:h-3 text-white stroke-[3]" />
-            </button>
-
-            <!-- バッジ -->
+            <!-- 選択チェック＆バッジ（左側にまとめ、右上のクイックアクションと重ならないようにする） -->
             <div class="absolute top-2 left-2 flex items-center gap-1.5">
+              <!-- 選択チェック（複数選択中や選択済みは常時表示、通常時はホバー表示） -->
+              <button
+                type="button"
+                class="relative z-20 shrink-0 w-6 h-6 sm:w-5 sm:h-5 rounded-full border flex items-center justify-center transition-all shadow-sm"
+                :class="pixiv.isSelected(item.id)
+                  ? 'bg-pixiv border-pixiv opacity-100'
+                  : (isMultiSelectMode || pixiv.selectedIds.value.length
+                    ? 'bg-canvas-panel/90 border-canvas-border-strong opacity-100 hover:border-pixiv'
+                    : 'bg-canvas-panel/90 border-canvas-border-strong opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100')"
+                :aria-label="pixiv.isSelected(item.id) ? '選択解除' : '選択'"
+                :aria-pressed="pixiv.isSelected(item.id)"
+                @click.stop="toggleSelect(item.id)"
+              >
+                <Check v-if="pixiv.isSelected(item.id)" class="w-3.5 h-3.5 sm:w-3 sm:h-3 text-white stroke-[3]" />
+              </button>
               <span
                 v-if="savedPixivIds.has(item.id)"
                 class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-pixiv text-white"
@@ -991,7 +1049,7 @@ onUnmounted(() => {
               {{ formatCount(item.bookmarks) }}
             </span>
 
-            <!-- ホバー: クイックアクション（PC向け、モバイルはカードタップで詳細・右上チェックで選択） -->
+            <!-- ホバー: クイックアクション（PC向け、モバイルはカードタップで詳細・左上チェックで選択） -->
             <div
               class="hidden sm:flex absolute inset-0 bg-canvas-panel/70 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity p-2.5 flex-col justify-between"
             >
@@ -1052,27 +1110,22 @@ onUnmounted(() => {
         </article>
       </div>
 
-      <!-- ページ送り -->
-      <div v-if="activeCategory !== 'saved' && !pixiv.isLoading.value && pixiv.items.value.length" class="mt-6 flex items-center justify-center gap-2">
-        <button
-          type="button"
-          class="p-2 rounded-lg border border-canvas-border bg-canvas-card text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors disabled:opacity-40"
-          :disabled="pixiv.currentPage.value <= 1"
-          aria-label="前のページ"
-          @click="pixiv.prevPage()"
-        >
-          <ChevronLeft class="w-4 h-4" />
-        </button>
-        <span class="text-[11px] font-mono text-ink-muted px-2">{{ pixiv.currentPage.value }}</span>
-        <button
-          type="button"
-          class="p-2 rounded-lg border border-canvas-border bg-canvas-card text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors disabled:opacity-40"
-          :disabled="!pixiv.hasNext.value"
-          aria-label="次のページ"
-          @click="pixiv.nextPage()"
-        >
-          <ChevronRight class="w-4 h-4" />
-        </button>
+      <!-- ページ送り（ページ番号・最初へ・ページ指定に対応） -->
+      <div v-if="activeCategory !== 'saved' && pixiv.items.value.length" class="mt-6 flex flex-col items-center gap-2">
+        <PixivPager
+          :page="pixiv.currentPage.value"
+          :has-next="pixiv.hasNext.value"
+          :is-loading="pixiv.isLoading.value"
+          :can-jump="supportsRandomPageAccess"
+          :context-label="activeCategoryLabel"
+          @prev="goToPrevPage"
+          @next="goToNextPage"
+          @first="goToFirstPage"
+          @go="goToPage"
+        />
+        <p v-if="!supportsRandomPageAccess" class="text-[10px] text-ink-subtle">
+          フォロー / ブックマークは前後のページへ順番に移動できます
+        </p>
       </div>
       </main>
     </div>

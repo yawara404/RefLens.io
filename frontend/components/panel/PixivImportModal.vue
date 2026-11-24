@@ -15,6 +15,7 @@ import {
 import { useBoardStore } from '~/stores/boardStore'
 import { usePixiv } from '~/composables/usePixiv'
 import PixivImage from '~/components/ui/PixivImage.vue'
+import PixivPager from '~/components/ui/PixivPager.vue'
 import FolderSelectDropdown from '~/components/ui/FolderSelectDropdown.vue'
 import { useToast } from '~/composables/useToast'
 import { useImageProcessor } from '~/composables/useImageProcessor'
@@ -41,6 +42,7 @@ const { dialogRef } = useDialogA11y(toRef(props, 'isOpen'), () => emit('close'))
 const searchInput = ref('')
 const selectedIds = ref<string[]>([])
 const targetFolder = ref('All References')
+const gridScrollRef = ref<HTMLElement | null>(null)
 
 const categories = [
   { id: 'recommended', label: 'おすすめ' },
@@ -71,6 +73,21 @@ function pickCategory(id: string) {
   }
   pixiv.clearSelection()
   pixiv.loadFeed(id)
+}
+
+/** 更新ボタン: 現在のカテゴリ・ページをそのまま読み直す */
+function reloadFeed() {
+  pixiv.loadFeed(undefined, pixiv.currentPage.value)
+}
+
+/** ページ移動（同一ページ・範囲外・読み込み中は無視）してグリッド先頭へ戻す */
+function goToPage(page: number) {
+  if (pixiv.isLoading.value) return
+  const maxPage = pixiv.currentPage.value + (pixiv.hasNext.value ? 1 : 0)
+  const target = Math.min(Math.max(1, Math.trunc(page)), maxPage)
+  if (!Number.isFinite(target) || target === pixiv.currentPage.value) return
+  pixiv.loadFeed(undefined, target)
+  gridScrollRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 function toggleSelect(id: string) {
@@ -176,7 +193,7 @@ onMounted(() => {
               type="button"
               class="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-canvas-hover transition-colors"
               aria-label="更新"
-              @click="load"
+              @click="reloadFeed"
             >
               <RefreshCw class="w-4 h-4" :class="pixiv.isLoading.value ? 'animate-spin' : ''" />
             </button>
@@ -250,7 +267,7 @@ onMounted(() => {
         </div>
 
         <!-- グリッド -->
-        <div class="flex-1 overflow-y-auto p-4">
+        <div ref="gridScrollRef" class="flex-1 overflow-y-auto p-4">
           <div v-if="pixiv.isLoading.value" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             <div v-for="i in 8" :key="i" class="aspect-square rounded-xl bg-canvas-card animate-pulse" />
           </div>
@@ -343,9 +360,16 @@ onMounted(() => {
               {{ allOnPageSelected ? 'このページの選択解除' : 'このページをすべて選択' }}
             </button>
             <div class="flex items-center gap-1 text-[11px] text-ink-muted">
-              <button type="button" class="px-2 py-1 rounded hover:bg-canvas-hover disabled:opacity-40" :disabled="pixiv.isLoading.value || pixiv.currentPage.value <= 1" @click="pixiv.prevPage()">前へ</button>
-              <span>{{ pixiv.currentPage.value }} ページ</span>
-              <button type="button" class="px-2 py-1 rounded hover:bg-canvas-hover disabled:opacity-40" :disabled="pixiv.isLoading.value || !pixiv.hasNext.value" @click="pixiv.nextPage()">次へ</button>
+              <PixivPager
+                compact
+                :page="pixiv.currentPage.value"
+                :has-next="pixiv.hasNext.value"
+                :is-loading="pixiv.isLoading.value"
+                context-label="取り込み"
+                @prev="goToPage(pixiv.currentPage.value - 1)"
+                @next="goToPage(pixiv.currentPage.value + 1)"
+                @first="goToPage(1)"
+              />
             </div>
           </div>
 

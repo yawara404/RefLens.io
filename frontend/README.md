@@ -32,6 +32,10 @@ frontend/
 └── nuxt.config.ts
 ```
 
+### 主な共通UIコンポーネント
+
+- `components/ui/PixivPager.vue` — pixivフィードのページ送り（ページ番号・最初へ/前後移動・ページ指定・読み込み中表示）。`/view` の上部/下部と、キャンバスのpixiv取り込みモーダルで共用しています。
+
 ---
 
 # Nuxt Minimal Starter
