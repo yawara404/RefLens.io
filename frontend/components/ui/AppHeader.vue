@@ -62,7 +62,7 @@ watch(() => route.fullPath, () => {
 </script>
 
 <template>
-  <header class="h-14 border-b border-canvas-border bg-canvas-panel px-3 md:px-5 flex items-center justify-between gap-2 sticky top-0 z-40 select-none">
+  <header class="h-14 border-b border-canvas-border bg-canvas-panel px-3 md:px-5 flex items-center justify-between gap-2 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sticky top-0 z-40 select-none">
     <!-- 左: ハンバーガーメニュー（モバイル）+ ロゴ -->
     <div class="flex items-center gap-2 min-w-0 justify-self-start">
       <button
@@ -115,7 +115,7 @@ watch(() => route.fullPath, () => {
       <!-- キーボードショートカット一覧モーダル呼び出し -->
       <button
         type="button"
-        class="hidden sm:inline-flex p-2 rounded-xl text-ink hover:text-brand hover:bg-canvas-hover border border-canvas-border-strong bg-canvas-card transition-colors select-none"
+        class="hidden lg:inline-flex p-2 rounded-xl text-ink hover:text-brand hover:bg-canvas-hover border border-canvas-border-strong bg-canvas-card transition-colors select-none"
         title="キーボードショートカット（?）"
         aria-label="キーボードショートカット一覧を開く"
         @click="helpStore.toggle()"

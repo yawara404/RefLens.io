@@ -2581,49 +2581,50 @@ onBeforeUnmount(() => {
                 @keydown.space.self.prevent="handleBookmarkActivate(b, $event)"
               >
                 <div class="relative aspect-square bg-canvas-sunken rounded-t-xl overflow-hidden">
-                  <!-- 複数選択チェックボックス（選択モード中 または 選択中のみ表示） -->
-                  <button
-                    v-if="activeSection === 'library' && (isSelectionMode || selectedBookmarkCount > 0)"
-                    type="button"
-                    class="absolute top-2 right-10 z-20 w-6 h-6 rounded-md border flex items-center justify-center transition-all animate-scale-in"
-                    :class="[
-                      isBookmarkSelected(b.id)
-                        ? 'bg-brand border-brand text-brand-fg opacity-100 shadow-sm'
-                        : 'bg-canvas-panel/90 border-canvas-border-strong text-transparent hover:border-brand opacity-90',
-                    ]"
-                    :aria-label="isBookmarkSelected(b.id) ? `${b.title} の選択を解除` : `${b.title} を選択`"
-                    :aria-pressed="isBookmarkSelected(b.id)"
-                    @click.stop="toggleBookmarkSelection(b)"
-                  >
-                    <Check v-if="isBookmarkSelected(b.id)" class="w-4 h-4" />
-                  </button>
+                  <!-- 複数選択チェックボックス＋ソースバッジ（左側にまとめ、右上の操作メニューと重ならないようにする） -->
+                  <div class="absolute top-2 left-2 flex items-center gap-1.5">
+                    <button
+                      v-if="activeSection === 'library' && (isSelectionMode || selectedBookmarkCount > 0)"
+                      type="button"
+                      class="relative z-20 shrink-0 w-6 h-6 rounded-md border flex items-center justify-center transition-all animate-scale-in"
+                      :class="[
+                        isBookmarkSelected(b.id)
+                          ? 'bg-brand border-brand text-brand-fg opacity-100 shadow-sm'
+                          : 'bg-canvas-panel/90 border-canvas-border-strong text-transparent hover:border-brand opacity-90',
+                      ]"
+                      :aria-label="isBookmarkSelected(b.id) ? `${b.title} の選択を解除` : `${b.title} を選択`"
+                      :aria-pressed="isBookmarkSelected(b.id)"
+                      @click.stop="toggleBookmarkSelection(b)"
+                    >
+                      <Check v-if="isBookmarkSelected(b.id)" class="w-4 h-4" />
+                    </button>
+                    <span
+                      v-if="b.source_type === 'pixiv'"
+                      class="px-2 py-0.5 rounded text-[10px] font-bold bg-pixiv text-white"
+                    >
+                      pixiv
+                    </span>
+                    <span
+                      v-else-if="b.source_type === 'instagram'"
+                      class="px-2 py-0.5 rounded text-[10px] font-bold bg-instagram text-white flex items-center gap-0.5"
+                    >
+                      <Instagram class="w-3 h-3" />
+                      IG
+                    </span>
+                    <span
+                      v-else
+                      class="px-2 py-0.5 rounded text-[10px] font-medium bg-canvas-panel/90 text-ink-muted border border-canvas-border"
+                    >
+                      Web
+                    </span>
+                  </div>
+
                   <img
                     :src="resolveThumbnail(b.file_path)"
                     :alt="b.title"
                     class="w-full h-full object-cover pointer-events-none"
                     loading="lazy"
                   >
-
-                  <!-- ソースバッジ -->
-                  <span
-                    v-if="b.source_type === 'pixiv'"
-                    class="absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold bg-pixiv text-white"
-                  >
-                    pixiv
-                  </span>
-                  <span
-                    v-else-if="b.source_type === 'instagram'"
-                    class="absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold bg-instagram text-white flex items-center gap-0.5"
-                  >
-                    <Instagram class="w-3 h-3" />
-                    IG
-                  </span>
-                  <span
-                    v-else
-                    class="absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-medium bg-canvas-panel/90 text-ink-muted border border-canvas-border"
-                  >
-                    Web
-                  </span>
 
                   <!-- Ollama AI 認識バッジ（検索タブ時） -->
                   <span

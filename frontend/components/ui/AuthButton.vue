@@ -66,7 +66,7 @@ onUnmounted(() => {
 
     <!-- 未ログイン: デモバッジ + ログインボタン -->
     <div v-else-if="!auth.isAuthenticated" class="flex items-center gap-1.5">
-      <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+      <span class="hidden lg:inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
         DEMO
       </span>
       <button
