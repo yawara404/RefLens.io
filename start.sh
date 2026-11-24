@@ -102,7 +102,9 @@ tunnel_pid_of() {
 
 port_up() {
   # $1 = ポート番号
-  curl -s -m 2 -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null
+  # NuxtがIPv6のlocalhostだけで待ち受けている場合も検出する。
+  curl -s -m 2 -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null || \
+    curl -s -m 2 -o /dev/null "http://localhost:$1/" 2>/dev/null
 }
 
 # ------------------------------------------------------------ backend 起動 --
@@ -128,14 +130,54 @@ start_backend() {
   else
     echo "バックエンドを起動しています (port ${BACKEND_PORT})..."
   fi
-  (
-    cd "$DIR/backend"
-    # ROOT_PATH を読むのは .env ではなく環境変数（サブパス公開時のみ設定する）
-    ROOT_PATH="$root_path" \
-      nohup "$PYTHON" -m uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" \
-      >> "$BACKEND_LOG" 2>&1 &
-    echo $! > "$BACKEND_PID"
-  )
+  if [ "$BACKEND_PORT" = 8080 ] && [ -z "$root_path" ] && command -v launchctl >/dev/null 2>&1; then
+    # ローカル認証APIはターミナル終了後も維持し、異常終了時に自動復旧する。
+    local service="gui/$(id -u)/io.reflens.local-backend"
+    local service_file="$HOME/Library/LaunchAgents/io.reflens.local-backend.plist"
+    if launchctl print "$service" >/dev/null 2>&1; then
+      launchctl kickstart "$service" || return 1
+    else
+      "$PYTHON" - "$DIR" "$PYTHON" "$BACKEND_LOG" "$service_file" <<'PY'
+import os
+from pathlib import Path
+import plistlib
+import sys
+project, python, log, output = sys.argv[1:]
+backend = Path(project) / "backend"
+config = {
+    "Label": "io.reflens.local-backend",
+    "ProgramArguments": [python, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8080"],
+    "WorkingDirectory": str(backend),
+    "EnvironmentVariables": {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "ROOT_PATH": "",
+        "DATABASE_URL": f"sqlite:///{backend / 'reflens.db'}",
+        "UPLOAD_DIR": str(backend / "uploads"),
+        "PIXIV_CACHE_DIR": str(backend / ".pixiv-cache"),
+    },
+    "RunAtLoad": True,
+    "KeepAlive": True,
+    "ThrottleInterval": 10,
+    "StandardOutPath": log,
+    "StandardErrorPath": log,
+}
+path = Path(output)
+path.parent.mkdir(parents=True, exist_ok=True)
+with path.open("wb") as stream:
+    plistlib.dump(config, stream)
+PY
+      launchctl bootstrap "gui/$(id -u)" "$service_file" || return 1
+    fi
+  else
+    (
+      cd "$DIR/backend"
+      # ROOT_PATH を読むのは .env ではなく環境変数（サブパス公開時のみ設定する）
+      ROOT_PATH="$root_path" \
+        nohup "$PYTHON" -m uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" \
+        >> "$BACKEND_LOG" 2>&1 &
+      echo $! > "$BACKEND_PID"
+    )
+  fi
 
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     if curl -s -m 2 "http://127.0.0.1:${BACKEND_PORT}/" >/dev/null 2>&1; then
@@ -181,7 +223,8 @@ start_frontend() {
     media_base="/"
   fi
 
-  if curl -fsS -m 2 -o /dev/null "http://127.0.0.1:${port}${base}" 2>/dev/null; then
+  if curl -fsS -m 2 -o /dev/null "http://127.0.0.1:${port}${base}" 2>/dev/null || \
+     curl -fsS -m 2 -o /dev/null "http://localhost:${port}${base}" 2>/dev/null; then
     echo "フロントエンドは起動済み（PID 管理外）→ http://127.0.0.1:${port}${base}"
     return 0
   fi
@@ -327,6 +370,13 @@ start_tunnel() {
 # ------------------------------------------------------------------ stop --
 stop_one() {
   local label="$1" pidfile="$2" port="${3:-}"
+  if [ "$pidfile" = "$LOG_DIR/backend.pid" ] && command -v launchctl >/dev/null 2>&1 && \
+     launchctl print "gui/$(id -u)/io.reflens.local-backend" >/dev/null 2>&1; then
+    launchctl bootout "gui/$(id -u)/io.reflens.local-backend" || return 1
+    rm -f "$pidfile"
+    echo "  $label を停止しました（launchd）"
+    return 0
+  fi
   if pid="$(pid_of "$pidfile")"; then
     # 子プロセス（npm→node など）もまとめて止める
     pkill -P "$pid" 2>/dev/null
@@ -395,7 +445,7 @@ case "${1:-start}" in
   start)
     start_backend "" && start_frontend default
     echo
-    echo "ローカル: http://127.0.0.1:${FRONTEND_PORT}/"
+    echo "ローカル: http://localhost:${FRONTEND_PORT}/"
     ;;
   pixiv-local)
     start_backend "" && start_frontend default
