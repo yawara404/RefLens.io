@@ -1,3 +1,5 @@
+import { HOME_DESCRIPTION, HOME_TITLE, publicSiteUrl, SITE_NAME, SITE_URL } from './utils/siteSeo'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 //
 // 配信パスについて
@@ -36,7 +38,7 @@ export default defineNuxtConfig({
     baseURL: appBase,
 
     head: {
-      title: 'RefLens.io - Smart Infinite Canvas for Artists',
+      title: HOME_TITLE,
       htmlAttrs: {
         lang: 'ja',
       },
@@ -45,24 +47,24 @@ export default defineNuxtConfig({
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         {
           name: 'description',
-          content: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。'
+          content: HOME_DESCRIPTION
         },
         { name: 'robots', content: 'index, follow, max-image-preview:large' },
         { name: 'theme-color', content: '#4338ca' },
         { name: 'google-site-verification', content: 'QEND1wFNaZp1AQkewXw8BQcRELQNfWwU_W_G9aUs5XQ' },
 
         // OGP
-        { property: 'og:site_name', content: 'RefLens.io' },
+        { property: 'og:site_name', content: SITE_NAME },
         { property: 'og:type', content: 'website' },
-        { property: 'og:url', content: 'https://art.wawa-app.me/RefLens.io/' },
+        { property: 'og:url', content: SITE_URL },
         { property: 'og:locale', content: 'ja_JP' },
-        { property: 'og:title', content: 'RefLens.io - Smart Infinite Canvas for Artists' },
+        { property: 'og:title', content: HOME_TITLE },
         {
           property: 'og:description',
-          content: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。'
+          content: HOME_DESCRIPTION
         },
-        { property: 'og:image', content: 'https://art.wawa-app.me/RefLens.io/card-v2.png' },
-        { property: 'og:image:secure_url', content: 'https://art.wawa-app.me/RefLens.io/card-v2.png' },
+        { property: 'og:image', content: publicSiteUrl('card-v2.png') },
+        { property: 'og:image:secure_url', content: publicSiteUrl('card-v2.png') },
         { property: 'og:image:type', content: 'image/png' },
         { property: 'og:image:width', content: '1200' },
         { property: 'og:image:height', content: '630' },
@@ -70,17 +72,17 @@ export default defineNuxtConfig({
 
         // Twitter Card
         { name: 'twitter:card', content: 'summary_large_image' },
-        { name: 'twitter:title', content: 'RefLens.io - Smart Infinite Canvas for Artists' },
+        { name: 'twitter:title', content: HOME_TITLE },
         {
           name: 'twitter:description',
-          content: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。'
+          content: HOME_DESCRIPTION
         },
-        { name: 'twitter:url', content: 'https://art.wawa-app.me/RefLens.io/' },
-        { name: 'twitter:image', content: 'https://art.wawa-app.me/RefLens.io/card-v2.png' },
+        { name: 'twitter:url', content: SITE_URL },
+        { name: 'twitter:image', content: publicSiteUrl('card-v2.png') },
         { name: 'twitter:image:alt', content: 'RefLens.io のカード画像（無限キャンバスのイメージ）' },
       ],
       link: [
-        { rel: 'canonical', key: 'canonical', href: 'https://art.wawa-app.me/RefLens.io/' },
+        { rel: 'canonical', key: 'canonical', href: SITE_URL },
         { rel: 'sitemap', type: 'application/xml', title: 'Sitemap', href: `${appBase}sitemap.xml` },
         { rel: 'icon', type: 'image/svg+xml', href: `${appBase}favicon.svg` },
         { rel: 'icon', type: 'image/x-icon', href: `${appBase}favicon.ico` },
@@ -88,28 +90,6 @@ export default defineNuxtConfig({
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
         { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap' }
-      ],
-      script: [
-        {
-          type: 'application/ld+json',
-          innerHTML: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'WebApplication',
-            name: 'RefLens.io',
-            url: 'https://art.wawa-app.me/RefLens.io/',
-            description: 'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。',
-            applicationCategory: 'DesignApplication',
-            operatingSystem: 'Web',
-            inLanguage: 'ja',
-            isAccessibleForFree: true,
-            image: 'https://art.wawa-app.me/RefLens.io/favicon-card.png',
-            offers: {
-              '@type': 'Offer',
-              price: '0',
-              priceCurrency: 'JPY'
-            }
-          })
-        }
       ]
     }
   },

@@ -1,21 +1,19 @@
-import { computed, toValue, type MaybeRefOrGetter } from 'vue'
+import { toValue, type MaybeRefOrGetter } from 'vue'
+import { publicSiteUrl, SITE_NAME } from '~/utils/siteSeo'
 
 export interface PageSeo {
   /** ページ固有のタイトル（サイト名を含めた完成形を渡す） */
   title: string
-  description?: string
+  description: string
   /** app.baseURL を含めないパス。例: '/view' */
-  path?: string
+  path: string
   /** 1200x630 のカード画像（絶対URL・サイト内パスのどちらでも可） */
   image?: string
   type?: 'website' | 'article'
   noindex?: boolean
 }
 
-const SITE_NAME = 'RefLens.io'
 const SITE_LOCALE = 'ja_JP'
-const DEFAULT_DESCRIPTION =
-  'Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス。'
 const DEFAULT_IMAGE = '/card-v2.png'
 const IMAGE_WIDTH = '1200'
 const IMAGE_HEIGHT = '630'
@@ -28,37 +26,11 @@ const IMAGE_HEIGHT = '630'
  * Nuxt は SSR で HTML に meta を出力するため、JS を実行しないクローラーにも内容が届く。
  */
 export function useSeo(options: MaybeRefOrGetter<PageSeo>) {
-  const config = useRuntimeConfig()
-  const route = useRoute()
-
-  // サーバーでは x-forwarded-host / proto を考慮した URL になる
-  const origin = useRequestURL().origin
-
-  const appBase = computed(() => {
-    const raw = (config.public.appBase as string) || '/'
-    return raw.endsWith('/') ? raw : `${raw}/`
-  })
-
-  /** route.path は baseURL を含むため、ページ内パスへ正規化する */
-  const currentPath = computed(() => {
-    const base = appBase.value.replace(/\/+$/, '')
-    let path = route.path || '/'
-    if (base && path.startsWith(base)) path = path.slice(base.length) || '/'
-    return path.startsWith('/') ? path : `/${path}`
-  })
-
-  function absolute(pathOrUrl: string): string {
-    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl
-    const relative = pathOrUrl.replace(/^\/+/, '')
-    return new URL(`${appBase.value}${relative}`, origin).toString()
-  }
-
   useHead(() => {
     const seo = toValue(options)
-    const path = seo.path ?? currentPath.value
-    const url = absolute(path)
-    const image = absolute(seo.image || DEFAULT_IMAGE)
-    const description = seo.description || DEFAULT_DESCRIPTION
+    const url = publicSiteUrl(seo.path)
+    const image = publicSiteUrl(seo.image || DEFAULT_IMAGE)
+    const description = seo.description
     const imageAlt = `${seo.title} のカード画像`
     const robots = seo.noindex
       ? 'noindex, nofollow'

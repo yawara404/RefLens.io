@@ -7,6 +7,7 @@ useSeo({
   title: 'Canvas（無限キャンバス） | RefLens.io',
   description: '参照資料を自由に並べ、拡大縮小・回転・AI解析ができる無限キャンバス。',
   path: '/canvas',
+  noindex: true,
 })
 
 const boardStore = useBoardStore()

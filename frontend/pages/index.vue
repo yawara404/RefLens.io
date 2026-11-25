@@ -58,12 +58,36 @@ import {
   topAiTags,
   type BookmarkSortOrder as SortOrder,
 } from '~/utils/bookmarks'
+import { HOME_DESCRIPTION, HOME_TITLE, publicSiteUrl, SITE_NAME, SITE_URL } from '~/utils/siteSeo'
 import { folderColorByName, formatFolderLabel } from '~/utils/folders'
 
 useSeo({
-  title: 'RefLens.io - Smart Infinite Canvas for Artists',
-  description: 'Raindrop × pixiv × PureRef。資料のブックマーク・フォルダ整理・AI解析と無限キャンバスをひとつに。',
+  title: HOME_TITLE,
+  description: HOME_DESCRIPTION,
   path: '/',
+})
+
+useHead({
+  script: [{
+    type: 'application/ld+json',
+    innerHTML: JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      name: SITE_NAME,
+      url: SITE_URL,
+      description: HOME_DESCRIPTION,
+      applicationCategory: 'DesignApplication',
+      operatingSystem: 'Web',
+      inLanguage: 'ja',
+      isAccessibleForFree: true,
+      image: publicSiteUrl('card-v2.png'),
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'JPY',
+      },
+    }),
+  }],
 })
 
 const boardStore = useBoardStore()

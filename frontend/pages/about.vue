@@ -3,18 +3,23 @@ import SiteInfoPage from '~/components/ui/SiteInfoPage.vue'
 import { useSeo } from '~/composables/useSeo'
 
 useSeo({
-  title: 'このサイトについて | RefLens.io',
-  description: 'RefLens.ioは、画像やWeb上の参考資料をライブラリにまとめ、キャンバス上で並べて見られる制作支援ツールです。',
+  title: 'RefLens.io とは？イラストの参考資料整理ツール',
+  description: 'RefLens.ioは、画像やWeb上の参考資料をライブラリにまとめ、無限キャンバスで見比べられる、イラストやデザイン向けの制作支援ツールです。',
   path: '/about',
 })
 </script>
 
 <template>
-  <SiteInfoPage title="このサイトについて">
-    <p>RefLens.ioは、画像やWeb上の参考資料をライブラリにまとめ、キャンバス上で並べて見られる制作支援ツールです。</p>
+  <SiteInfoPage title="RefLens.io でできること">
+    <p>RefLens.io は、イラストやデザインの参考資料を、集めるところから作業中に見比べるところまでブラウザで扱えるツールです。</p>
     <section class="space-y-2">
-      <h2 class="text-base font-semibold text-ink">主な機能</h2>
-      <p>Managerで資料を整理し、ViewでPixiv作品を閲覧し、Canvasで資料を配置できます。対応する画像には構図・光・色などのAI解析を表示できます。</p>
+      <h2 class="text-base font-semibold text-ink">画像とリンクをフォルダ・タグで整理</h2>
+      <p>手持ちの画像をドラッグ＆ドロップしたり、WebページのURLを貼り付けたりして、Managerに資料を集めます。作品ごとにフォルダを作り、「衣装」「ポーズ」「背景」などのタグを付けておくと、別の制作でも資料を探し直せます。</p>
+    </section>
+    <section class="space-y-2">
+      <h2 class="text-base font-semibold text-ink">無限キャンバスで構図や配色を見比べる</h2>
+      <p>Canvasでは、集めた画像を自由に配置・拡大縮小・回転できます。たとえば、キャラクターのポーズと衣装の資料を横に並べ、背景に使いたい色を近くに置いて、ラフを描く前に全体を確認できます。</p>
+      <p>画像の取り込みから配置までの操作は、<NuxtLink to="/help" class="text-brand hover:underline">RefLens.io の使い方</NuxtLink>で確認できます。</p>
     </section>
     <section class="space-y-2">
       <h2 class="text-base font-semibold text-ink">外部サービスとの関係</h2>

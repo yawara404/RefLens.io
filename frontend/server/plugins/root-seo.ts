@@ -1,111 +1,29 @@
 import { defineNitroPlugin } from 'nitropack/runtime'
+import { publicSiteUrl } from '../../utils/siteSeo'
 
-const ROBOTS_TXT = `# RefLens.io robots.txt
-# https://art.wawa-app.me/RefLens.io/
-#
-# クロール方針:
-# - 公開画面 (Manager, Canvas, Pixiv View, このサイトについて, 利用上の注意, プライバシーポリシー) を許可
-# - 内部API (/RefLens.io/api/*) と個人管理ページ (/RefLens.io/account) は検索インデックスから除外
-# - 静的アセット (/RefLens.io/_nuxt/*) はレンダリングに必要なためブロックしない
+const ROBOTS_TXT = `User-agent: *
+Disallow: ${new URL(publicSiteUrl('api/')).pathname}
 
-User-agent: *
-Allow: /RefLens.io/
-Allow: /RefLens.io/canvas
-Allow: /RefLens.io/view
-Allow: /RefLens.io/help
-Allow: /RefLens.io/about
-Allow: /RefLens.io/terms
-Allow: /RefLens.io/privacy
-Disallow: /RefLens.io/api/
-Disallow: /RefLens.io/account
-Disallow: /RefLens.io/board/
-
-Sitemap: https://art.wawa-app.me/RefLens.io/sitemap.xml
-`
-
-const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
-  <!-- RefLens.io ホーム / Manager -->
-  <url>
-    <loc>https://art.wawa-app.me/RefLens.io/</loc>
-    <lastmod>2026-11-07</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-    <image:image>
-      <image:loc>https://art.wawa-app.me/RefLens.io/card-v2.png</image:loc>
-      <image:title>RefLens.io - Smart Infinite Canvas for Artists</image:title>
-      <image:caption>Raindrop × pixiv × PureRef。イラストレーター・創作者のためのAI解析・参照資料ブックマーク＆無限キャンバス</image:caption>
-    </image:image>
-  </url>
-
-  <!-- 無限キャンバス -->
-  <url>
-    <loc>https://art.wawa-app.me/RefLens.io/canvas</loc>
-    <lastmod>2026-11-07</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-
-  <!-- Pixiv ビューワー -->
-  <url>
-    <loc>https://art.wawa-app.me/RefLens.io/view</loc>
-    <lastmod>2026-11-07</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-
-  <!-- 使い方・操作ガイド -->
-  <url>
-    <loc>https://art.wawa-app.me/RefLens.io/help</loc>
-    <lastmod>2026-11-07</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-
-  <!-- このサイトについて -->
-  <url>
-    <loc>https://art.wawa-app.me/RefLens.io/about</loc>
-    <lastmod>2026-11-07</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-
-  <!-- 利用上の注意 -->
-  <url>
-    <loc>https://art.wawa-app.me/RefLens.io/terms</loc>
-    <lastmod>2026-11-07</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.3</priority>
-  </url>
-
-  <!-- プライバシーポリシー -->
-  <url>
-    <loc>https://art.wawa-app.me/RefLens.io/privacy</loc>
-    <lastmod>2026-11-07</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.3</priority>
-  </url>
-</urlset>
+Sitemap: ${publicSiteUrl('sitemap.xml')}
 `
 
 export default defineNitroPlugin((nitroApp) => {
-  nitroApp.hooks.hook('request', async (event) => {
+  nitroApp.hooks.hook('request', (event) => {
     const url = event.node.req.url?.split('?')[0]
-    // ホスト直下の /robots.txt
+    const res = event.node.res
+
     if (url === '/robots.txt') {
-      event.node.res.statusCode = 200
-      event.node.res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-      event.node.res.setHeader('Cache-Control', 'public, max-age=14400')
-      event.node.res.end(ROBOTS_TXT)
-    }
-    // ホスト直下の /sitemap.xml
-    else if (url === '/sitemap.xml') {
-      event.node.res.statusCode = 200
-      event.node.res.setHeader('Content-Type', 'application/xml; charset=utf-8')
-      event.node.res.setHeader('Cache-Control', 'public, max-age=14400')
-      event.node.res.end(SITEMAP_XML)
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+      res.setHeader('Cache-Control', 'public, max-age=14400')
+      res.end(ROBOTS_TXT)
+    } else if (url === '/sitemap.xml') {
+      const sitemapPath = new URL(publicSiteUrl('sitemap.xml')).pathname
+      if (sitemapPath.startsWith(useRuntimeConfig(event).app.baseURL) && sitemapPath !== url) {
+        res.statusCode = 301
+        res.setHeader('Location', sitemapPath)
+        res.end()
+      }
     }
   })
 })
-

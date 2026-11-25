@@ -54,13 +54,13 @@ function startDemo() {
 
           <div class="space-y-1">
             <h1 id="hero-main-title" class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-ink tracking-tight leading-tight">
-              描く人のための、<br class="hidden sm:inline">
-              <span class="text-brand underline decoration-brand/30 underline-offset-6">無限の資料庫。</span>
+              イラストの参考資料を、<br class="hidden sm:inline">
+              <span class="text-brand underline decoration-brand/30 underline-offset-6">ひとつの無限キャンバスに。</span>
             </h1>
           </div>
 
           <p class="text-xs sm:text-sm text-ink-muted leading-relaxed max-w-xl">
-            Raindrop × pixiv × PureRef。Web画像、pixivイラスト、手持ちの設定資料を1枚の無限キャンバスに自由配置。<strong class="text-ink font-semibold">Ollama AI</strong> がタグの有無に関係なく被写体・色彩・構図を自動認識します。
+            RefLens.io は、Web画像や手持ちの設定資料をフォルダやタグで整理し、無限キャンバスに並べて見比べられる制作ツールです。
           </p>
 
           <!-- アクションボタン -->
@@ -232,5 +232,10 @@ function startDemo() {
         </div>
       </div>
     </section>
+
+    <nav class="flex flex-wrap gap-x-5 gap-y-2 text-xs text-ink-muted" aria-label="RefLens.io の詳しい情報">
+      <NuxtLink to="/about" class="hover:text-brand hover:underline">RefLens.io でできること</NuxtLink>
+      <NuxtLink to="/help" class="hover:text-brand hover:underline">資料整理とキャンバスの使い方</NuxtLink>
+    </nav>
   </div>
 </template>
